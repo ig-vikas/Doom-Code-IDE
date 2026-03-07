@@ -1,4 +1,4 @@
-﻿# Doom Code
+﻿# <img src="src-tauri/icons/icon.png" width="32" height="32" align="absmiddle" /> Doom Code
 
 A Lightweight(13 MB) CPP IDE built with **Tauri**, **React**, and **Monaco Editor** — designed for speed, customization, and a seamless coding experience.
 
