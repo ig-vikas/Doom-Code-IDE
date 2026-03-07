@@ -1,0 +1,622 @@
+import { create } from 'zustand';
+import type { SplitNode, FileTab } from '../types';
+import { generateId, getFileName, getFileExtension, getLanguageFromExtension } from '../utils/fileUtils';
+
+interface EditorState {
+  layout: SplitNode;
+  activeGroupId: string;
+  closedTabs: FileTab[];
+  cursorPosition: { line: number; column: number } | null;
+  insertSnippet: ((text: string) => void) | null;
+
+  // Actions
+  openFile: (path: string, content: string, groupId?: string, isPreview?: boolean) => void;
+  openTab: (groupId: string, tab: FileTab) => void;
+  closeTab: (groupId: string, tabId: string) => void;
+  setActiveTab: (groupId: string, tabId: string) => void;
+  setActiveGroup: (groupId: string) => void;
+  updateTabContent: (tabId: string, content: string) => void;
+  markSaved: (path: string) => void;
+  markTabModified: (groupId: string, tabId: string, modified: boolean) => void;
+  markTabSaved: (groupId: string, tabId: string, path?: string) => void;
+  pinTab: (groupId: string, tabId: string) => void;
+  moveTab: (fromGroupId: string, tabId: string, toGroupId: string, index?: number) => void;
+  splitGroup: (groupId: string, direction: 'horizontal' | 'vertical', tabId?: string) => void;
+  closeOtherTabs: (groupId: string, tabId: string) => void;
+  closeTabsToRight: (groupId: string, tabId: string) => void;
+  closeAllTabs: (groupId: string) => void;
+  reopenClosedTab: () => void;
+  nextTab: (groupId: string) => void;
+  previousTab: (groupId: string) => void;
+  goToTab: (groupId: string, index: number) => void;
+  reorderTab: (groupId: string, fromIndex: number, toIndex: number) => void;
+  removeGroup: (groupId: string) => void;
+  updateCursorPosition: (groupId: string, tabId: string, line: number, column: number) => void;
+  setCursorPosition: (line: number, column: number) => void;
+  setInsertSnippetFn: (fn: ((text: string) => void) | null) => void;
+  getActiveTab: () => FileTab | null;
+  getGroupTabs: (groupId: string) => FileTab[];
+  getAllGroups: () => Extract<SplitNode, { type: 'leaf' }>[];
+  findTabByPath: (path: string) => { groupId: string; tab: FileTab } | null;
+  updateSplitSizes: (parentPath: number[], sizes: number[]) => void;
+}
+
+const initialGroupId = generateId();
+
+function findGroup(node: SplitNode, groupId: string): SplitNode | null {
+  if (node.type === 'leaf' && node.id === groupId) return node;
+  if (node.type === 'split') {
+    for (const child of node.children) {
+      const found = findGroup(child, groupId);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function updateGroup(node: SplitNode, groupId: string, updater: (leaf: Extract<SplitNode, { type: 'leaf' }>) => SplitNode): SplitNode {
+  if (node.type === 'leaf' && node.id === groupId) {
+    return updater(node);
+  }
+  if (node.type === 'split') {
+    return {
+      ...node,
+      children: node.children.map((c) => updateGroup(c, groupId, updater)),
+    };
+  }
+  return node;
+}
+
+function removeEmptyGroups(node: SplitNode): SplitNode | null {
+  if (node.type === 'leaf') {
+    return node.tabs.length > 0 ? node : null;
+  }
+  const children = node.children
+    .map(removeEmptyGroups)
+    .filter((c): c is SplitNode => c !== null);
+
+  if (children.length === 0) return null;
+  if (children.length === 1) return children[0];
+  return { ...node, children, sizes: children.map(() => 100 / children.length) };
+}
+
+function getAllGroups(node: SplitNode): Extract<SplitNode, { type: 'leaf' }>[] {
+  if (node.type === 'leaf') return [node];
+  return node.children.flatMap(getAllGroups);
+}
+
+export const useEditorStore = create<EditorState>((set, get) => ({
+  layout: {
+    type: 'leaf',
+    id: initialGroupId,
+    tabs: [],
+    activeTabId: null,
+  },
+  activeGroupId: initialGroupId,
+  closedTabs: [],
+  cursorPosition: null,
+  insertSnippet: null,
+
+  openTab: (groupId, tab) => {
+    const state = get();
+    const group = findGroup(state.layout, groupId);
+    if (!group || group.type !== 'leaf') return;
+    const existing = group.tabs.find((t) => t.id === tab.id || t.path === tab.path);
+    if (existing) {
+      set({
+        layout: updateGroup(state.layout, groupId, (leaf) => ({
+          ...leaf,
+          activeTabId: existing.id,
+          tabs: leaf.tabs.map((t) => t.id === existing.id ? { ...t, ...tab, id: existing.id } : t),
+        })),
+        activeGroupId: groupId,
+      });
+    } else {
+      // Replace preview tab if exists
+      const previewIdx = group.tabs.findIndex((t) => t.isPreview);
+      const newTabs = [...group.tabs];
+      if (previewIdx >= 0) {
+        newTabs[previewIdx] = { ...tab, cursorLine: 1, cursorColumn: 1, scrollTop: 0 };
+      } else {
+        newTabs.push({ ...tab, cursorLine: tab.cursorLine ?? 1, cursorColumn: tab.cursorColumn ?? 1, scrollTop: tab.scrollTop ?? 0 });
+      }
+      set({
+        layout: updateGroup(state.layout, groupId, (leaf) => ({
+          ...leaf,
+          tabs: newTabs,
+          activeTabId: tab.id,
+        })),
+        activeGroupId: groupId,
+      });
+    }
+  },
+
+  openFile: (path, content, groupId, isPreview = false) => {
+    const state = get();
+    const targetGroupId = groupId || state.activeGroupId;
+
+    // Check if already open in target group
+    const group = findGroup(state.layout, targetGroupId);
+    if (group && group.type === 'leaf') {
+      const existing = group.tabs.find((t) => t.path === path);
+      if (existing) {
+        set({
+          layout: updateGroup(state.layout, targetGroupId, (leaf) => ({
+            ...leaf,
+            activeTabId: existing.id,
+          })),
+        });
+        return;
+      }
+    }
+
+    const ext = getFileExtension(path);
+    const newTab: FileTab = {
+      id: generateId(),
+      path,
+      name: getFileName(path),
+      content,
+      isModified: false,
+      isPinned: false,
+      isPreview,
+      cursorLine: 1,
+      cursorColumn: 1,
+      scrollTop: 0,
+      language: getLanguageFromExtension(ext),
+    };
+
+    set({
+      layout: updateGroup(state.layout, targetGroupId, (leaf) => {
+        // Replace preview tab if exists
+        let newTabs = [...leaf.tabs];
+        if (isPreview) {
+          const previewIdx = newTabs.findIndex((t) => t.isPreview);
+          if (previewIdx >= 0) {
+            newTabs[previewIdx] = newTab;
+          } else {
+            newTabs.push(newTab);
+          }
+        } else {
+          newTabs.push(newTab);
+        }
+        return { ...leaf, tabs: newTabs, activeTabId: newTab.id };
+      }),
+      activeGroupId: targetGroupId,
+    });
+  },
+
+  closeTab: (groupId, tabId) => {
+    const state = get();
+    const group = findGroup(state.layout, groupId);
+    if (!group || group.type !== 'leaf') return;
+
+    const tab = group.tabs.find((t) => t.id === tabId);
+    if (tab) {
+      const closedTabs = [tab, ...state.closedTabs].slice(0, 20);
+      const newTabs = group.tabs.filter((t) => t.id !== tabId);
+      const tabIdx = group.tabs.findIndex((t) => t.id === tabId);
+      const newActiveId =
+        group.activeTabId === tabId
+          ? newTabs[Math.min(tabIdx, newTabs.length - 1)]?.id || null
+          : group.activeTabId;
+
+      let newLayout = updateGroup(state.layout, groupId, (leaf) => ({
+        ...leaf,
+        tabs: newTabs,
+        activeTabId: newActiveId,
+      }));
+
+      // Remove empty groups
+      const cleaned = removeEmptyGroups(newLayout);
+      if (!cleaned) {
+        // Keep at least one empty group
+        const newId = generateId();
+        newLayout = { type: 'leaf', id: newId, tabs: [], activeTabId: null };
+        set({ layout: newLayout, activeGroupId: newId, closedTabs });
+      } else {
+        // Update activeGroupId if needed
+        const groups = getAllGroups(cleaned);
+        const activeGroupStillExists = groups.some((g) => g.id === state.activeGroupId);
+        set({
+          layout: cleaned,
+          activeGroupId: activeGroupStillExists ? state.activeGroupId : groups[0]?.id || '',
+          closedTabs,
+        });
+      }
+    }
+  },
+
+  setActiveTab: (groupId, tabId) => {
+    set((state) => ({
+      layout: updateGroup(state.layout, groupId, (leaf) => ({
+        ...leaf,
+        activeTabId: tabId,
+      })),
+      activeGroupId: groupId,
+    }));
+  },
+
+  setActiveGroup: (groupId) => set({ activeGroupId: groupId }),
+
+  updateTabContent: (tabId, content) => {
+    // Find the tab across all groups
+    const state = get();
+    const groups = getAllGroups(state.layout);
+    let targetGroupId: string | null = null;
+    for (const g of groups) {
+      if (g.tabs.some((t) => t.id === tabId)) {
+        targetGroupId = g.id;
+        break;
+      }
+    }
+    if (!targetGroupId) return;
+    set((state) => ({
+      layout: updateGroup(state.layout, targetGroupId!, (leaf) => ({
+        ...leaf,
+        tabs: leaf.tabs.map((t) =>
+          t.id === tabId ? { ...t, content, isModified: true, isPreview: false } : t
+        ),
+      })),
+    }));
+  },
+
+  markSaved: (path) => {
+    const groups = getAllGroups(get().layout);
+    for (const g of groups) {
+      const tab = g.tabs.find((t) => t.path === path);
+      if (tab) {
+        set((state) => ({
+          layout: updateGroup(state.layout, g.id, (leaf) => ({
+            ...leaf,
+            tabs: leaf.tabs.map((t) =>
+              t.path === path ? { ...t, isModified: false } : t
+            ),
+          })),
+        }));
+        return;
+      }
+    }
+  },
+
+  markTabModified: (groupId, tabId, modified) => {
+    set((state) => ({
+      layout: updateGroup(state.layout, groupId, (leaf) => ({
+        ...leaf,
+        tabs: leaf.tabs.map((t) =>
+          t.id === tabId ? { ...t, isModified: modified } : t
+        ),
+      })),
+    }));
+  },
+
+  markTabSaved: (groupId, tabId, path) => {
+    set((state) => ({
+      layout: updateGroup(state.layout, groupId, (leaf) => ({
+        ...leaf,
+        tabs: leaf.tabs.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                isModified: false,
+                ...(path
+                  ? { path, name: getFileName(path) }
+                  : {}),
+              }
+            : t
+        ),
+      })),
+    }));
+  },
+
+  pinTab: (groupId, tabId) => {
+    set((state) => ({
+      layout: updateGroup(state.layout, groupId, (leaf) => ({
+        ...leaf,
+        tabs: leaf.tabs.map((t) =>
+          t.id === tabId ? { ...t, isPinned: true, isPreview: false } : t
+        ),
+      })),
+    }));
+  },
+
+  moveTab: (fromGroupId, tabId, toGroupId, index) => {
+    const state = get();
+    const fromGroup = findGroup(state.layout, fromGroupId);
+    if (!fromGroup || fromGroup.type !== 'leaf') return;
+    const tab = fromGroup.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+
+    // Remove from source
+    let newLayout = updateGroup(state.layout, fromGroupId, (leaf) => {
+      const newTabs = leaf.tabs.filter((t) => t.id !== tabId);
+      return {
+        ...leaf,
+        tabs: newTabs,
+        activeTabId: leaf.activeTabId === tabId
+          ? newTabs[newTabs.length - 1]?.id || null
+          : leaf.activeTabId,
+      };
+    });
+
+    // Add to destination
+    newLayout = updateGroup(newLayout, toGroupId, (leaf) => {
+      const newTabs = [...leaf.tabs];
+      if (index !== undefined) {
+        newTabs.splice(index, 0, tab);
+      } else {
+        newTabs.push(tab);
+      }
+      return { ...leaf, tabs: newTabs, activeTabId: tab.id };
+    });
+
+    const cleaned = removeEmptyGroups(newLayout);
+    if (cleaned) {
+      set({ layout: cleaned, activeGroupId: toGroupId });
+    }
+  },
+
+  splitGroup: (groupId, direction, tabId) => {
+    const state = get();
+    const group = findGroup(state.layout, groupId);
+    if (!group || group.type !== 'leaf') return;
+
+    const newGroupId = generateId();
+    let tabToMove: FileTab | undefined;
+
+    if (tabId) {
+      tabToMove = group.tabs.find((t) => t.id === tabId);
+    }
+
+    const newGroup: SplitNode = {
+      type: 'leaf',
+      id: newGroupId,
+      tabs: tabToMove ? [tabToMove] : [],
+      activeTabId: tabToMove?.id || null,
+    };
+
+    let updatedOriginal: SplitNode = group;
+    if (tabToMove) {
+      updatedOriginal = {
+        ...group,
+        tabs: group.tabs.filter((t) => t.id !== tabId),
+        activeTabId: group.activeTabId === tabId
+          ? group.tabs.find((t) => t.id !== tabId)?.id || null
+          : group.activeTabId,
+      };
+    }
+
+    const splitNode: SplitNode = {
+      type: 'split',
+      direction,
+      children: [updatedOriginal, newGroup],
+      sizes: [50, 50],
+    };
+
+    const replaceGroup = (node: SplitNode): SplitNode => {
+      if (node.type === 'leaf' && node.id === groupId) return splitNode;
+      if (node.type === 'split') {
+        return { ...node, children: node.children.map(replaceGroup) };
+      }
+      return node;
+    };
+
+    set({
+      layout: replaceGroup(state.layout),
+      activeGroupId: tabToMove ? newGroupId : groupId,
+    });
+  },
+
+  closeOtherTabs: (groupId, tabId) => {
+    set((state) => ({
+      layout: updateGroup(state.layout, groupId, (leaf) => ({
+        ...leaf,
+        tabs: leaf.tabs.filter((t) => t.id === tabId),
+        activeTabId: tabId,
+      })),
+    }));
+  },
+
+  closeTabsToRight: (groupId, tabId) => {
+    set((state) => ({
+      layout: updateGroup(state.layout, groupId, (leaf) => {
+        const idx = leaf.tabs.findIndex((t) => t.id === tabId);
+        const newTabs = leaf.tabs.slice(0, idx + 1);
+        return {
+          ...leaf,
+          tabs: newTabs,
+          activeTabId: newTabs.some((t) => t.id === leaf.activeTabId)
+            ? leaf.activeTabId
+            : tabId,
+        };
+      }),
+    }));
+  },
+
+  closeAllTabs: (groupId) => {
+    set((state) => ({
+      layout: updateGroup(state.layout, groupId, (leaf) => ({
+        ...leaf,
+        tabs: [],
+        activeTabId: null,
+      })),
+    }));
+  },
+
+  reopenClosedTab: () => {
+    const state = get();
+    if (state.closedTabs.length === 0) return;
+    const [tab, ...rest] = state.closedTabs;
+    get().openFile(tab.path, tab.content, state.activeGroupId, false);
+    set({ closedTabs: rest });
+  },
+
+  nextTab: (groupId) => {
+    const state = get();
+    const group = findGroup(state.layout, groupId);
+    if (!group || group.type !== 'leaf' || group.tabs.length === 0) return;
+    const idx = group.tabs.findIndex((t) => t.id === group.activeTabId);
+    const nextIdx = (idx + 1) % group.tabs.length;
+    set({
+      layout: updateGroup(state.layout, groupId, (leaf) => ({
+        ...leaf,
+        activeTabId: leaf.tabs[nextIdx]?.id || null,
+      })),
+    });
+  },
+
+  previousTab: (groupId) => {
+    const state = get();
+    const group = findGroup(state.layout, groupId);
+    if (!group || group.type !== 'leaf' || group.tabs.length === 0) return;
+    const idx = group.tabs.findIndex((t) => t.id === group.activeTabId);
+    const prevIdx = (idx - 1 + group.tabs.length) % group.tabs.length;
+    set({
+      layout: updateGroup(state.layout, groupId, (leaf) => ({
+        ...leaf,
+        activeTabId: leaf.tabs[prevIdx]?.id || null,
+      })),
+    });
+  },
+
+  goToTab: (groupId, index) => {
+    const state = get();
+    const group = findGroup(state.layout, groupId);
+    if (!group || group.type !== 'leaf') return;
+    const tab = group.tabs[index];
+    if (tab) {
+      set({
+        layout: updateGroup(state.layout, groupId, (leaf) => ({
+          ...leaf,
+          activeTabId: tab.id,
+        })),
+      });
+    }
+  },
+
+  reorderTab: (groupId, fromIndex, toIndex) => {
+    set((state) => ({
+      layout: updateGroup(state.layout, groupId, (leaf) => {
+        const newTabs = [...leaf.tabs];
+        const [removed] = newTabs.splice(fromIndex, 1);
+        newTabs.splice(toIndex, 0, removed);
+        return { ...leaf, tabs: newTabs };
+      }),
+    }));
+  },
+
+  removeGroup: (groupId) => {
+    const state = get();
+    const groups = getAllGroups(state.layout);
+    // Can't remove the last group
+    if (groups.length <= 1) return;
+
+    const group = findGroup(state.layout, groupId);
+    if (!group || group.type !== 'leaf') return;
+
+    const tabsToMove = group.tabs;
+
+    // Find nearest group: prefer same-level sibling, else first available
+    const otherGroups = groups.filter((g) => g.id !== groupId);
+    const targetGroup = otherGroups[0];
+    if (!targetGroup) return;
+
+    // Remove the group from layout
+    const removeFromLayout = (node: SplitNode): SplitNode | null => {
+      if (node.type === 'leaf') {
+        return node.id === groupId ? null : node;
+      }
+      const children = node.children
+        .map(removeFromLayout)
+        .filter((c): c is SplitNode => c !== null);
+      if (children.length === 0) return null;
+      if (children.length === 1) return children[0];
+      return { ...node, children, sizes: children.map(() => 100 / children.length) };
+    };
+
+    // First add tabs to the target group
+    let newLayout = state.layout;
+    if (tabsToMove.length > 0) {
+      newLayout = updateGroup(newLayout, targetGroup.id, (leaf) => ({
+        ...leaf,
+        tabs: [...leaf.tabs, ...tabsToMove],
+        activeTabId: tabsToMove[0]?.id || leaf.activeTabId,
+      }));
+    }
+
+    // Then remove the empty group
+    newLayout = updateGroup(newLayout, groupId, (leaf) => ({
+      ...leaf,
+      tabs: [],
+      activeTabId: null,
+    }));
+
+    const cleaned = removeFromLayout(newLayout);
+    if (cleaned) {
+      set({
+        layout: cleaned,
+        activeGroupId: targetGroup.id,
+      });
+    }
+  },
+
+  updateCursorPosition: (groupId, tabId, line, column) => {
+    set((state) => ({
+      layout: updateGroup(state.layout, groupId, (leaf) => ({
+        ...leaf,
+        tabs: leaf.tabs.map((t) =>
+          t.id === tabId ? { ...t, cursorLine: line, cursorColumn: column } : t
+        ),
+      })),
+    }));
+  },
+
+  setCursorPosition: (line, column) => set({ cursorPosition: { line, column } }),
+
+  setInsertSnippetFn: (fn) => set({ insertSnippet: fn }),
+
+  getActiveTab: () => {
+    const state = get();
+    const group = findGroup(state.layout, state.activeGroupId);
+    if (!group || group.type !== 'leaf') return null;
+    return group.tabs.find((t) => t.id === group.activeTabId) || null;
+  },
+
+  getGroupTabs: (groupId) => {
+    const group = findGroup(get().layout, groupId);
+    if (!group || group.type !== 'leaf') return [];
+    return group.tabs;
+  },
+
+  getAllGroups: () => {
+    return getAllGroups(get().layout);
+  },
+
+  findTabByPath: (path) => {
+    const groups = getAllGroups(get().layout);
+    for (const group of groups) {
+      const tab = group.tabs.find((t) => t.path === path);
+      if (tab) return { groupId: group.id, tab };
+    }
+    return null;
+  },
+
+  updateSplitSizes: (parentPath, sizes) => {
+    const updateAtPath = (node: SplitNode, path: number[]): SplitNode => {
+      if (path.length === 0) {
+        if (node.type === 'split') {
+          return { ...node, sizes };
+        }
+        return node;
+      }
+      if (node.type === 'split') {
+        const [head, ...rest] = path;
+        return {
+          ...node,
+          children: node.children.map((c, i) => i === head ? updateAtPath(c, rest) : c),
+        };
+      }
+      return node;
+    };
+    set((state) => ({ layout: updateAtPath(state.layout, parentPath) }));
+  },
+}));

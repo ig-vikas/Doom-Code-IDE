@@ -1,0 +1,45 @@
+import type { ThemeDefinition } from '../types';
+
+export const nordTheme: ThemeDefinition = {
+  id: 'nord', name: 'Nord', type: 'dark',
+  colors: {
+    bgDeepest: '#242933', bgBase: '#2e3440', bgSurface: '#333a47', bgElevated: '#3b4252',
+    bgOverlay: '#434c5e', bgHighlight: '#4c566a', bgActive: '#5a657a', bgIntense: '#687589',
+    accentPrimary: '#88c0d0', accentSecondary: '#81a1c1', accentTertiary: '#5e81ac',
+    accentGlow: '#a3d4e0', accentBlue: '#81a1c1', accentGreen: '#a3be8c', accentRed: '#bf616a',
+    accentYellow: '#ebcb8b', accentOrange: '#d08770', accentPurple: '#b48ead', accentCyan: '#88c0d0',
+    accentTeal: '#8fbcbb', accentPink: '#b48ead',
+    textPrimary: '#eceff4', textSecondary: '#d8dee9', textMuted: '#616e88', textFaint: '#4c566a',
+    textInverse: '#2e3440',
+    borderSubtle: '#434c5e', borderDefault: '#4c566a', borderStrong: '#687589', borderAccent: '#88c0d0',
+    scrollbarThumb: '#4c566a', scrollbarThumbHover: '#5a657a', scrollbarTrack: 'transparent',
+  },
+  monacoTheme: {
+    base: 'vs-dark', inherit: true,
+    rules: [
+      { token: 'comment', foreground: '616e88', fontStyle: 'italic' },
+      { token: 'keyword', foreground: '81a1c1', fontStyle: 'bold' },
+      { token: 'storage.type', foreground: '81a1c1' },
+      { token: 'type', foreground: '8fbcbb' },
+      { token: 'entity.name.function', foreground: '88c0d0' },
+      { token: 'variable', foreground: 'eceff4' },
+      { token: 'variable.parameter', foreground: 'eceff4', fontStyle: 'italic' },
+      { token: 'constant', foreground: 'b48ead' },
+      { token: 'number', foreground: 'b48ead' },
+      { token: 'string', foreground: 'a3be8c' },
+      { token: 'operator', foreground: '81a1c1' },
+      { token: 'preprocessor', foreground: '5e81ac' },
+      { token: 'delimiter', foreground: 'eceff4' },
+      { token: 'identifier', foreground: 'eceff4' },
+      { token: '', foreground: 'd8dee9' },
+    ],
+    colors: {
+      'editor.background': '#2e3440', 'editor.foreground': '#d8dee9',
+      'editor.lineHighlightBackground': '#3b4252', 'editor.selectionBackground': '#4c566a',
+      'editorCursor.foreground': '#d8dee9', 'editorLineNumber.foreground': '#4c566a',
+      'editorLineNumber.activeForeground': '#d8dee9',
+      'editorWidget.background': '#434c5e', 'editorWidget.border': '#4c566a',
+      'input.background': '#333a47', 'input.border': '#4c566a', 'input.foreground': '#eceff4',
+    },
+  },
+};

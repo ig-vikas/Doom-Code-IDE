@@ -1,0 +1,45 @@
+import type { ThemeDefinition } from '../types';
+
+export const draculaTheme: ThemeDefinition = {
+  id: 'dracula', name: 'Dracula', type: 'dark',
+  colors: {
+    bgDeepest: '#21222c', bgBase: '#282a36', bgSurface: '#2d2f3d', bgElevated: '#343746',
+    bgOverlay: '#3a3d4e', bgHighlight: '#44475a', bgActive: '#4e5266', bgIntense: '#585c72',
+    accentPrimary: '#bd93f9', accentSecondary: '#ff79c6', accentTertiary: '#8be9fd',
+    accentGlow: '#d4b0ff', accentBlue: '#8be9fd', accentGreen: '#50fa7b', accentRed: '#ff5555',
+    accentYellow: '#f1fa8c', accentOrange: '#ffb86c', accentPurple: '#bd93f9', accentCyan: '#8be9fd',
+    accentTeal: '#8be9fd', accentPink: '#ff79c6',
+    textPrimary: '#f8f8f2', textSecondary: '#d4d4d4', textMuted: '#6272a4', textFaint: '#44475a',
+    textInverse: '#282a36',
+    borderSubtle: '#3a3d4e', borderDefault: '#44475a', borderStrong: '#585c72', borderAccent: '#bd93f9',
+    scrollbarThumb: '#44475a', scrollbarThumbHover: '#585c72', scrollbarTrack: 'transparent',
+  },
+  monacoTheme: {
+    base: 'vs-dark', inherit: true,
+    rules: [
+      { token: 'comment', foreground: '6272a4', fontStyle: 'italic' },
+      { token: 'keyword', foreground: 'ff79c6', fontStyle: 'bold' },
+      { token: 'storage.type', foreground: '8be9fd', fontStyle: 'italic' },
+      { token: 'type', foreground: '8be9fd', fontStyle: 'italic' },
+      { token: 'entity.name.function', foreground: '50fa7b' },
+      { token: 'variable', foreground: 'f8f8f2' },
+      { token: 'variable.parameter', foreground: 'ffb86c', fontStyle: 'italic' },
+      { token: 'constant', foreground: 'bd93f9' },
+      { token: 'number', foreground: 'bd93f9' },
+      { token: 'string', foreground: 'f1fa8c' },
+      { token: 'operator', foreground: 'ff79c6' },
+      { token: 'preprocessor', foreground: 'ff79c6' },
+      { token: 'delimiter', foreground: 'f8f8f2' },
+      { token: 'identifier', foreground: 'f8f8f2' },
+      { token: '', foreground: 'f8f8f2' },
+    ],
+    colors: {
+      'editor.background': '#282a36', 'editor.foreground': '#f8f8f2',
+      'editor.lineHighlightBackground': '#343746', 'editor.selectionBackground': '#44475a',
+      'editorCursor.foreground': '#f8f8f0', 'editorLineNumber.foreground': '#6272a4',
+      'editorLineNumber.activeForeground': '#f8f8f2',
+      'editorWidget.background': '#3a3d4e', 'editorWidget.border': '#44475a',
+      'input.background': '#2d2f3d', 'input.border': '#44475a', 'input.foreground': '#f8f8f2',
+    },
+  },
+};
