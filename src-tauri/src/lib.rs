@@ -3,6 +3,7 @@ mod state;
 mod utils;
 
 use state::AppState;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -13,6 +14,15 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_os::init())
         .manage(AppState::new())
+        .setup(|app| {
+            // Set the window icon for taskbar/alt-tab on Windows
+            if let Some(window) = app.get_webview_window("main") {
+                let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))
+                    .expect("Failed to load app icon");
+                let _ = window.set_icon(icon);
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // File operations
             commands::file_ops::read_file,

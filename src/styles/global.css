@@ -227,6 +227,12 @@ input::placeholder, textarea::placeholder {
   height: 16px;
 }
 
+.titlebar-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
 .titlebar-menus {
   display: flex;
   align-items: center;

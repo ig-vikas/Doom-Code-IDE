@@ -4,7 +4,9 @@ import { useUIStore } from '../stores';
 import { useSolveCounterStore } from '../stores/solveCounterStore';
 import MenuBar from './MenuBar';
 import { VscChromeMinimize, VscChromeMaximize, VscChromeRestore, VscChromeClose, VscAdd, VscRemove } from 'react-icons/vsc';
-import { TbBolt } from 'react-icons/tb';
+
+// Import the app icon - Vite handles the asset path
+import appIcon from '/src-tauri/icons/icon.png';
 
 export default function TitleBar() {
   const [maximized, setMaximized] = useState(false);
@@ -36,7 +38,7 @@ export default function TitleBar() {
   return (
     <div className="titlebar">
       <div className="titlebar-logo">
-        <TbBolt />
+        <img src={appIcon} alt="Doom Code" className="titlebar-icon" />
         <span>Doom Code</span>
       </div>
       <MenuBar />
