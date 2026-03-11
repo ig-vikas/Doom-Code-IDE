@@ -5,7 +5,8 @@ export interface BuildProfile {
   flags: string[];
   timeLimit: number;
   isDefault: boolean;
-  mode: 'tc' | 'file';
+  mode: 'tc' | 'file' | 'custom';
+  customCommand?: string;
 }
 
 export interface BuildConfig {

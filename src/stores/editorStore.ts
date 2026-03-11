@@ -38,6 +38,7 @@ interface EditorState {
   getGroupTabs: (groupId: string) => FileTab[];
   getAllGroups: () => Extract<SplitNode, { type: 'leaf' }>[];
   findTabByPath: (path: string) => { groupId: string; tab: FileTab } | null;
+  refreshTabContent: (tabId: string, content: string) => void;
   updateSplitSizes: (parentPath: number[], sizes: number[]) => void;
 }
 
@@ -77,7 +78,20 @@ function removeEmptyGroups(node: SplitNode): SplitNode | null {
 
   if (children.length === 0) return null;
   if (children.length === 1) return children[0];
-  return { ...node, children, sizes: children.map(() => 100 / children.length) };
+
+  // Preserve existing sizes if no children were removed, otherwise redistribute
+  if (children.length === node.children.length) {
+    return { ...node, children, sizes: node.sizes };
+  }
+  // Recalculate sizes proportionally for remaining children
+  const remainingIndices = node.children.map((c, i) => {
+    const cleaned = removeEmptyGroups(c);
+    return cleaned ? i : -1;
+  }).filter((i) => i >= 0);
+  const remainingSizes = remainingIndices.map((i) => node.sizes[i]);
+  const totalSize = remainingSizes.reduce((a, b) => a + b, 0);
+  const normalizedSizes = remainingSizes.map((s) => (s / totalSize) * 100);
+  return { ...node, children, sizes: normalizedSizes };
 }
 
 function getAllGroups(node: SplitNode): Extract<SplitNode, { type: 'leaf' }>[] {
@@ -592,12 +606,35 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   findTabByPath: (path) => {
+    const normPath = path.replace(/\//g, '\\').toLowerCase();
     const groups = getAllGroups(get().layout);
     for (const group of groups) {
-      const tab = group.tabs.find((t) => t.path === path);
+      const tab = group.tabs.find((t) => t.path && t.path.replace(/\//g, '\\').toLowerCase() === normPath);
       if (tab) return { groupId: group.id, tab };
     }
     return null;
+  },
+
+  refreshTabContent: (tabId, content) => {
+    // Update content WITHOUT marking as modified (for external file changes)
+    const state = get();
+    const groups = getAllGroups(state.layout);
+    let targetGroupId: string | null = null;
+    for (const g of groups) {
+      if (g.tabs.some((t) => t.id === tabId)) {
+        targetGroupId = g.id;
+        break;
+      }
+    }
+    if (!targetGroupId) return;
+    set((state) => ({
+      layout: updateGroup(state.layout, targetGroupId!, (leaf) => ({
+        ...leaf,
+        tabs: leaf.tabs.map((t) =>
+          t.id === tabId ? { ...t, content, isModified: false } : t
+        ),
+      })),
+    }));
   },
 
   updateSplitSizes: (parentPath, sizes) => {

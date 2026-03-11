@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { useThemeStore } from '../stores';
+import { useThemeStore, useSettingsStore } from '../stores';
 import { onTerminalOutput } from '../services/commandService';
 import '@xterm/xterm/css/xterm.css';
 
@@ -11,13 +11,14 @@ export default function TerminalPanel() {
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const colors = useThemeStore((s) => s.colors);
+  const terminalSettings = useSettingsStore((s) => s.settings.terminal);
 
   useEffect(() => {
     if (!containerRef.current || termRef.current) return;
 
     const term = new Terminal({
-      fontSize: 13,
-      fontFamily: "'JetBrains Mono', 'Consolas', monospace",
+      fontSize: terminalSettings.fontSize,
+      fontFamily: terminalSettings.fontFamily,
       theme: {
         background: colors.bgDeepest,
         foreground: colors.textPrimary,
@@ -80,6 +81,17 @@ export default function TerminalPanel() {
       };
     }
   }, [colors]);
+
+  // Update terminal font settings
+  useEffect(() => {
+    if (termRef.current) {
+      termRef.current.options.fontSize = terminalSettings.fontSize;
+      termRef.current.options.fontFamily = terminalSettings.fontFamily;
+      try {
+        fitAddonRef.current?.fit();
+      } catch {}
+    }
+  }, [terminalSettings.fontSize, terminalSettings.fontFamily]);
 
   return <div ref={containerRef} className="terminal-container" />;
 }

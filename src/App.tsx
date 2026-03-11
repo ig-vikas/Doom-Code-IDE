@@ -8,11 +8,11 @@ import StatusBar from './components/StatusBar';
 import CommandPalette from './components/CommandPalette';
 import Notifications from './components/Notifications';
 import SettingsPanel from './components/SettingsPanel';
-import { useUIStore, useThemeStore, useSettingsStore, useEditorSchemeStore } from './stores';
+import { useUIStore, useThemeStore, useSettingsStore, useEditorSchemeStore, useEditorStore } from './stores';
 import { useGlobalKeybindings } from './hooks/useKeybindings';
 import { useResizable } from './hooks/useResizable';
 import { loadConfig } from './services/configService';
-import { initializeCommands, saveSession, restoreSession } from './services/commandService';
+import { initializeCommands, saveSession, restoreSession, refreshAllOpenFiles } from './services/commandService';
 import { useSolveCounterStore } from './stores/solveCounterStore';
 import type { AppSettings } from './types';
 
@@ -88,9 +88,24 @@ export default function App() {
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
 
+    // Save session whenever layout changes (debounced) — ensures split sizes persist
+    let layoutSaveTimer: ReturnType<typeof setTimeout> | null = null;
+    let prevLayout = useEditorStore.getState().layout;
+    const unsubLayout = useEditorStore.subscribe((state) => {
+      if (state.layout !== prevLayout) {
+        prevLayout = state.layout;
+        if (layoutSaveTimer) clearTimeout(layoutSaveTimer);
+        layoutSaveTimer = setTimeout(() => {
+          saveSession();
+        }, 2000);
+      }
+    });
+
     return () => {
       clearInterval(interval);
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      unsubLayout();
+      if (layoutSaveTimer) clearTimeout(layoutSaveTimer);
     };
   }, []);
 
@@ -167,6 +182,22 @@ export default function App() {
     return () => {
       window.removeEventListener('keydown', preventNativeZoom, { capture: true });
       window.removeEventListener('wheel', preventWheelZoom, { capture: true } as EventListenerOptions);
+    };
+  }, []);
+
+  // Refresh open files when window regains focus (detects external file changes)
+  useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const handleFocus = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        refreshAllOpenFiles();
+      }, 300);
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      if (debounceTimer) clearTimeout(debounceTimer);
     };
   }, []);
 

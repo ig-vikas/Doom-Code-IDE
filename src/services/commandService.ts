@@ -688,6 +688,49 @@ async function doBuildAndRun(autoRun: boolean) {
       notify.success('Test run completed');
     }
     emitTerminalOutput('\r\n');
+    // Refresh open files after test runs
+    await refreshAllOpenFiles();
+  } else if (mode === 'custom') {
+    // Custom mode: run user-defined command with placeholders
+    const customCmd = (profile.customCommand || '')
+      .replace(/\{file\}/g, sourcePath)
+      .replace(/\{exe\}/g, exePath)
+      .replace(/\{dir\}/g, fileDir)
+      .replace(/\{flags\}/g, flags);
+
+    if (!customCmd) {
+      notify.error('No custom command configured for this profile');
+      useBuildStore.getState().setRunning(false);
+      return;
+    }
+
+    emitTerminalOutput(`\x1b[2m$ ${customCmd}\x1b[0m\r\n`);
+
+    try {
+      const result = await runShellCommand(customCmd, fileDir);
+      useBuildStore.getState().setRunning(false);
+
+      if (useBuildStore.getState().killed) {
+        emitTerminalOutput('\r\n');
+      } else if (result.success) {
+        notify.success('Custom command completed');
+        emitTerminalOutput(`\x1b[32m✓ Command completed\x1b[0m\r\n`);
+        if (result.stdout) emitTerminalOutput(result.stdout.replace(/\n/g, '\r\n'));
+      } else {
+        notify.error('Custom command failed');
+        emitTerminalOutput(`\x1b[31m✗ Command failed\x1b[0m\r\n`);
+        if (result.stderr) emitTerminalOutput(result.stderr.replace(/\n/g, '\r\n'));
+        if (result.stdout) emitTerminalOutput(result.stdout.replace(/\n/g, '\r\n'));
+      }
+      emitTerminalOutput('\r\n');
+      await refreshAllOpenFiles();
+    } catch (err) {
+      useBuildStore.getState().setRunning(false);
+      if (!useBuildStore.getState().killed) {
+        notify.error('Custom command failed: ' + String(err));
+        emitTerminalOutput(`\x1b[31mError: ${String(err)}\x1b[0m\r\n\r\n`);
+      }
+    }
   } else {
     // File mode (Vikas): run with input.txt > output.txt
     const runCmd = `${baseName}.exe < input.txt > output.txt`;
@@ -703,21 +746,8 @@ async function doBuildAndRun(autoRun: boolean) {
         notify.success('Run completed — output written to output.txt');
         emitTerminalOutput(`\x1b[32m✓ Run completed — see output.txt\x1b[0m\r\n`);
 
-        // Reload output.txt in any open editor tab
-        const outputPath = `${fileDir}\\output.txt`;
-        try {
-          const outputContent = await readFileContent(outputPath);
-          const edState = useEditorStore.getState();
-          const { layout } = edState;
-          const allGroups = getAllLeaves(layout);
-          for (const g of allGroups) {
-            const tab = g.tabs.find((t: any) => t.path && t.path.replace(/\//g, '\\') === outputPath);
-            if (tab) {
-              useEditorStore.getState().updateTabContent(tab.id, outputContent);
-              useEditorStore.getState().markSaved(outputPath);
-            }
-          }
-        } catch {}
+        // Refresh all open files — picks up output.txt and any other externally changed files
+        await refreshAllOpenFiles();
       } else {
         notify.error('Run failed');
         emitTerminalOutput(`\x1b[31m✗ Run failed\x1b[0m\r\n`);
@@ -835,6 +865,28 @@ export function onTerminalOutput(listener: TerminalListener): () => void {
 export function emitTerminalOutput(data: string) {
   for (const listener of terminalListeners) {
     listener(data);
+  }
+}
+
+// ======================== REFRESH OPEN FILES ========================
+// Re-reads all open files from disk and updates tabs without marking modified.
+// This handles files written by external programs (build output, etc).
+export async function refreshAllOpenFiles() {
+  const edState = useEditorStore.getState();
+  const allGroups = getAllLeaves(edState.layout);
+  for (const g of allGroups) {
+    for (const tab of g.tabs) {
+      if (tab.path && !tab.isModified) {
+        try {
+          const content = await readFileContent(tab.path);
+          if (content !== tab.content) {
+            useEditorStore.getState().refreshTabContent(tab.id, content);
+          }
+        } catch {
+          // File may have been deleted or is inaccessible — skip
+        }
+      }
+    }
   }
 }
 

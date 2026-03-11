@@ -29,7 +29,8 @@ export default function BuildConfigPanel({ onClose }: { onClose: () => void }) {
   const [formStandard, setFormStandard] = useState('c++17');
   const [formFlags, setFormFlags] = useState('');
   const [formTimeLimit, setFormTimeLimit] = useState('5000');
-  const [formBuildMode, setFormBuildMode] = useState<'tc' | 'file'>('tc');
+  const [formBuildMode, setFormBuildMode] = useState<'tc' | 'file' | 'custom'>('tc');
+  const [formCustomCommand, setFormCustomCommand] = useState('');
   const [formError, setFormError] = useState('');
 
   const openAddForm = useCallback(() => {
@@ -40,6 +41,7 @@ export default function BuildConfigPanel({ onClose }: { onClose: () => void }) {
     setFormFlags('');
     setFormTimeLimit('5000');
     setFormBuildMode('tc');
+    setFormCustomCommand('');
     setFormError('');
   }, []);
 
@@ -51,6 +53,7 @@ export default function BuildConfigPanel({ onClose }: { onClose: () => void }) {
     setFormFlags(profile.flags.join(' '));
     setFormTimeLimit(String(profile.timeLimit));
     setFormBuildMode(profile.mode || 'file');
+    setFormCustomCommand(profile.customCommand || '');
     setFormError('');
   }, []);
 
@@ -66,6 +69,10 @@ export default function BuildConfigPanel({ onClose }: { onClose: () => void }) {
       setFormError('Profile name is required');
       return;
     }
+    if (formBuildMode === 'custom' && !formCustomCommand.trim()) {
+      setFormError('Custom command is required for custom mode');
+      return;
+    }
     const flags = formFlags.trim().split(/\s+/).filter(Boolean);
     const timeLimit = parseInt(formTimeLimit) || 5000;
 
@@ -77,6 +84,7 @@ export default function BuildConfigPanel({ onClose }: { onClose: () => void }) {
         timeLimit,
         isDefault: false,
         mode: formBuildMode,
+        customCommand: formBuildMode === 'custom' ? formCustomCommand.trim() : undefined,
       });
     } else if (mode === 'edit' && editingId) {
       updateProfile(editingId, {
@@ -85,10 +93,11 @@ export default function BuildConfigPanel({ onClose }: { onClose: () => void }) {
         flags,
         timeLimit,
         mode: formBuildMode,
+        customCommand: formBuildMode === 'custom' ? formCustomCommand.trim() : undefined,
       });
     }
     closeForm();
-  }, [formName, formStandard, formFlags, formTimeLimit, formBuildMode, mode, editingId, addProfile, updateProfile, closeForm]);
+  }, [formName, formStandard, formFlags, formTimeLimit, formBuildMode, formCustomCommand, mode, editingId, addProfile, updateProfile, closeForm]);
 
   const activeProfile = profiles.find(p => p.id === activeProfileId);
   const activeFlags = activeProfile?.flags.join(' ') ?? '';
@@ -120,13 +129,28 @@ export default function BuildConfigPanel({ onClose }: { onClose: () => void }) {
             <label>Run Mode</label>
             <select
               value={formBuildMode}
-              onChange={(e) => setFormBuildMode(e.target.value as 'tc' | 'file')}
+              onChange={(e) => setFormBuildMode(e.target.value as 'tc' | 'file' | 'custom')}
               className="build-config-select"
             >
               <option value="tc">Test Cases (from panel)</option>
               <option value="file">File I/O (input.txt → output.txt)</option>
+              <option value="custom">Custom Command</option>
             </select>
           </div>
+          {formBuildMode === 'custom' && (
+            <div className="snippet-form-field">
+              <label>Custom Command</label>
+              <input
+                type="text"
+                value={formCustomCommand}
+                onChange={(e) => setFormCustomCommand(e.target.value)}
+                placeholder='e.g. g++ {flags} "{file}" -o "{exe}" && "{exe}"'
+              />
+              <span style={{ fontSize: '0.85em', color: 'var(--text-muted)', marginTop: 4 }}>
+                Placeholders: {'{file}'} = source path, {'{exe}'} = executable path, {'{dir}'} = file directory, {'{flags}'} = compiler flags
+              </span>
+            </div>
+          )}
           <div className="snippet-form-field">
             <label>C++ Standard</label>
             <select
@@ -198,13 +222,15 @@ export default function BuildConfigPanel({ onClose }: { onClose: () => void }) {
 
       <div className="build-config-section">
         <div className="build-config-section-header">
-          <span>Shell Command ({activeMode === 'tc' ? 'Test Cases' : 'File I/O'})</span>
+          <span>Shell Command ({activeMode === 'tc' ? 'Test Cases' : activeMode === 'file' ? 'File I/O' : 'Custom'})</span>
         </div>
         <div className="build-cmd-preview">
           <code>
             {activeMode === 'tc'
               ? `${compilerPath || 'g++'} ${activeFlags} "<file>" -o "<file>.exe" && run each test case via stdin/stdout`
-              : `del "<file>.exe" 2>nul & ${compilerPath || 'g++'} ${activeFlags} "<file>" -o "<file>.exe" && "<file>.exe" < input.txt > output.txt`}
+              : activeMode === 'file'
+              ? `del "<file>.exe" 2>nul & ${compilerPath || 'g++'} ${activeFlags} "<file>" -o "<file>.exe" && "<file>.exe" < input.txt > output.txt`
+              : (activeProfile?.customCommand || 'No custom command set')}
           </code>
         </div>
       </div>
@@ -231,7 +257,7 @@ export default function BuildConfigPanel({ onClose }: { onClose: () => void }) {
             <div className="build-profile-info">
               <span className="build-profile-name">
                 {profile.name}
-                <span className="build-mode-badge">{profile.mode === 'tc' ? 'TC' : 'FILE'}</span>
+                <span className="build-mode-badge">{profile.mode === 'tc' ? 'TC' : profile.mode === 'custom' ? 'CMD' : 'FILE'}</span>
               </span>
               <span className="build-profile-flags">{profile.flags.join(' ')}</span>
             </div>

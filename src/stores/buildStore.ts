@@ -23,6 +23,7 @@ function loadStoredProfiles(): BuildProfile[] | null {
       return profiles.map(p => ({
         ...p,
         mode: p.mode || 'file',
+        customCommand: p.customCommand || undefined,
       }));
     }
   } catch {}

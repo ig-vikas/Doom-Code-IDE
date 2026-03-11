@@ -1,5 +1,5 @@
 import { CSSProperties, useCallback, useState } from 'react';
-import { useUIStore, useBuildStore } from '../stores';
+import { useUIStore, useBuildStore, useSettingsStore } from '../stores';
 import TerminalPanel from './TerminalPanel';
 import TestCases from './TestCases';
 import BuildConfigPanel from './BuildConfigPanel';
@@ -20,6 +20,7 @@ export default function BottomPanel({ style }: BottomPanelProps) {
   const compiling = useBuildStore((s) => s.compiling);
   const running = useBuildStore((s) => s.running);
   const activeProfile = useBuildStore((s) => s.getActiveProfile());
+  const terminalFontSize = useSettingsStore((s) => s.settings.terminal.fontSize);
   const [activeTab, setActiveTab] = useState<'terminal' | 'testcases' | 'buildconfig'>('terminal');
   const [testCasesEnabled, setTestCasesEnabled] = useState(true);
 
@@ -36,7 +37,7 @@ export default function BottomPanel({ style }: BottomPanelProps) {
   }, []);
 
   return (
-    <div className="bottom-panel" style={style}>
+    <div className="bottom-panel" style={{ ...style, fontSize: `${terminalFontSize}px` }}>
       <div className="bottom-panel-header">
         <div className="bottom-panel-tabs">
           <button
