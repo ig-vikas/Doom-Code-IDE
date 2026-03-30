@@ -174,6 +174,7 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
   const splitGroup = useEditorStore((s) => s.splitGroup);
   const moveTab = useEditorStore((s) => s.moveTab);
   const removeGroup = useEditorStore((s) => s.removeGroup);
+  const updateCursorPosition = useEditorStore((s) => s.updateCursorPosition);
   const totalGroups = useEditorStore((s) => s.getAllGroups().length);
   const setInsertSnippetFn = useEditorStore((s) => s.setInsertSnippetFn);
   const setCursorPosition = useEditorStore((s) => s.setCursorPosition);
@@ -315,12 +316,21 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
         setActiveEditor(editor, monaco);
       });
 
-      // Track cursor position for status bar
+      // Track cursor position for status bar and store
       editor.onDidChangeCursorPosition((e) => {
         setCursorPosition(e.position.lineNumber, e.position.column);
+        if (activeTab) {
+          updateCursorPosition(groupId, activeTab.id, e.position.lineNumber, e.position.column);
+        }
       });
 
-      // Set initial cursor position
+      // Restore cursor position from tab data
+      if (activeTab && activeTab.cursorLine && activeTab.cursorColumn) {
+        editor.setPosition({ lineNumber: activeTab.cursorLine, column: activeTab.cursorColumn });
+        editor.revealLine(activeTab.cursorLine);
+      }
+
+      // Set initial cursor position for status bar
       const pos = editor.getPosition();
       if (pos) {
         setCursorPosition(pos.lineNumber, pos.column);
@@ -423,6 +433,7 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
             options={{
               fontSize: settings.editor.fontSize,
               fontFamily: settings.editor.fontFamily,
+              fontWeight: settings.editor.fontWeight as any,
               tabSize: settings.editor.tabSize,
               wordWrap: settings.editor.wordWrap as 'on' | 'off' | 'wordWrapColumn' | 'bounded',
               minimap: { enabled: settings.editor.minimap },
@@ -438,6 +449,7 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
               suggest: { showSnippets: true },
               quickSuggestions: true,
             }}
+            {...(settings.editor.fontStyle === 'italic' ? { style: { fontStyle: 'italic' } } : {})}
           />
         </div>
       ) : null}

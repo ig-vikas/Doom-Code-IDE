@@ -23,6 +23,8 @@ export interface EditorSettings {
   cursorWidth: number;
   smoothScrolling: boolean;
   fontLigatures: boolean;
+  fontWeight: 'normal' | 'bold' | '300' | '400' | '500' | '600' | '700' | '800' | '900';
+  fontStyle: 'normal' | 'italic';
   renderWhitespace: 'none' | 'boundary' | 'selection' | 'all';
   bracketPairColorization: boolean;
   autoClosingBrackets: 'always' | 'languageDefined' | 'never';

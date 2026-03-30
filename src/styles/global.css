@@ -269,6 +269,7 @@ input::placeholder, textarea::placeholder {
   display: flex;
   align-items: center;
   -webkit-app-region: no-drag;
+  gap: 0;
 }
 
 .titlebar-btn {
@@ -279,6 +280,7 @@ input::placeholder, textarea::placeholder {
   justify-content: center;
   color: var(--text-secondary);
   transition: background var(--transition-fast);
+  flex-shrink: 0;
 }
 
 .titlebar-btn:hover {
