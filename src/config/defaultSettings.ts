@@ -2,7 +2,7 @@ import type { AppSettings } from '../types';
 
 export const defaultSettings: AppSettings = {
   editor: {
-    fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace',
+    fontFamily: '"Consolas", "Courier New", monospace',
     fontSize: 15,
     lineHeight: 1.7,
     tabSize: 4,
@@ -27,7 +27,7 @@ export const defaultSettings: AppSettings = {
     snippetSuggestions: 'top',
     suggestOnTriggerCharacters: true,
     acceptSuggestionOnEnter: 'on',
-    mouseWheelZoom: true,
+    mouseWheelZoom: false,
     stickyScroll: false,
     linkedEditing: false,
     guides: {
@@ -36,7 +36,7 @@ export const defaultSettings: AppSettings = {
     },
   },
   ui: {
-    theme: 'obsidian',
+    theme: 'vscode-dark',
     editorColorScheme: 'vscode-dark-plus',
     sidebarWidth: 260,
     sidebarVisible: true,
@@ -46,7 +46,7 @@ export const defaultSettings: AppSettings = {
     menuBarVisible: true,
     activityBarVisible: true,
     zoomLevel: 100,
-    fontFamily: '"Inter", "Segoe UI", sans-serif',
+    fontFamily: '"Segoe UI", sans-serif',
     fontSize: 13,
   },
   build: {

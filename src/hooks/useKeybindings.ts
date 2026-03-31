@@ -21,6 +21,13 @@ function matchesEvent(e: KeyboardEvent, parsed: ReturnType<typeof parseKeybindin
   return e.key.toLowerCase() === parsed.key;
 }
 
+function parseKeybindingSequence(binding: string) {
+  return binding
+    .trim()
+    .split(/\s+/)
+    .map(parseKeybinding);
+}
+
 // Commands that should work even when typing in inputs
 const GLOBAL_COMMANDS = new Set([
   'file.nextTab', 'file.previousTab', 'file.closeTab', 'file.save',
@@ -39,27 +46,95 @@ export function useGlobalKeybindings() {
 
   useEffect(() => {
     const bindings = useKeybindingStore.getState().getEffectiveBindings();
-    const singleBindings = bindings
-      .filter((kb) => !kb.key.includes(' '))
-      .map((kb) => ({ command: kb.command, parsed: parseKeybinding(kb.key) }));
+    const parsedBindings = bindings.map((kb) => ({
+      command: kb.command,
+      sequence: parseKeybindingSequence(kb.key),
+    }));
 
-    const onKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+    let pendingBindings: typeof parsedBindings = [];
+    let pendingIndex = 0;
+    let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 
-      for (const b of singleBindings) {
-        if (matchesEvent(e, b.parsed)) {
-          if (isInput && !GLOBAL_COMMANDS.has(b.command)) continue;
-          e.preventDefault();
-          e.stopPropagation();
-          executeCommand(b.command);
-          return;
-        }
+    const clearPending = () => {
+      pendingBindings = [];
+      pendingIndex = 0;
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+        pendingTimer = null;
       }
     };
 
+    const armPending = (candidates: typeof parsedBindings, nextIndex: number) => {
+      pendingBindings = candidates;
+      pendingIndex = nextIndex;
+      if (pendingTimer) clearTimeout(pendingTimer);
+      pendingTimer = setTimeout(() => {
+        clearPending();
+      }, 1500);
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable;
+
+      const isAllowed = (command: string) => !isInput || GLOBAL_COMMANDS.has(command);
+
+      if (pendingBindings.length > 0) {
+        const nextMatches = pendingBindings.filter((binding) =>
+          matchesEvent(e, binding.sequence[pendingIndex])
+        );
+
+        if (nextMatches.length > 0) {
+          const allowedMatches = nextMatches.filter((binding) => isAllowed(binding.command));
+          if (allowedMatches.length === 0) {
+            clearPending();
+            return;
+          }
+
+          e.preventDefault();
+          e.stopPropagation();
+
+          const completed = allowedMatches.find((binding) => binding.sequence.length === pendingIndex + 1);
+          if (completed) {
+            clearPending();
+            executeCommand(completed.command);
+            return;
+          }
+
+          armPending(allowedMatches, pendingIndex + 1);
+          return;
+        }
+
+        clearPending();
+      }
+
+      const firstMatches = parsedBindings.filter((binding) => matchesEvent(e, binding.sequence[0]));
+      if (firstMatches.length === 0) return;
+
+      const allowedMatches = firstMatches.filter((binding) => isAllowed(binding.command));
+      if (allowedMatches.length === 0) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const immediate = allowedMatches.find((binding) => binding.sequence.length === 1);
+      if (immediate) {
+        clearPending();
+        executeCommand(immediate.command);
+        return;
+      }
+
+      armPending(allowedMatches, 1);
+    };
+
     window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
+    return () => {
+      clearPending();
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
   }, [overrides]);
 }
 

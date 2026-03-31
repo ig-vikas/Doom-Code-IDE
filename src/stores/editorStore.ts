@@ -2,12 +2,19 @@ import { create } from 'zustand';
 import type { SplitNode, FileTab } from '../types';
 import { generateId, getFileName, getFileExtension, getLanguageFromExtension } from '../utils/fileUtils';
 
+interface StoredFileViewState {
+  line: number;
+  column: number;
+  scrollTop: number;
+}
+
 interface EditorState {
   layout: SplitNode;
   activeGroupId: string;
   closedTabs: FileTab[];
   cursorPosition: { line: number; column: number } | null;
   insertSnippet: ((text: string) => void) | null;
+  fileViewState: Record<string, StoredFileViewState>;
 
   // Actions
   openFile: (path: string, content: string, groupId?: string, isPreview?: boolean) => void;
@@ -32,8 +39,11 @@ interface EditorState {
   reorderTab: (groupId: string, fromIndex: number, toIndex: number) => void;
   removeGroup: (groupId: string) => void;
   updateCursorPosition: (groupId: string, tabId: string, line: number, column: number) => void;
+  updateScrollPosition: (groupId: string, tabId: string, scrollTop: number) => void;
   setCursorPosition: (line: number, column: number) => void;
   setInsertSnippetFn: (fn: ((text: string) => void) | null) => void;
+  hydrateFileViewState: (viewState: Record<string, StoredFileViewState>) => void;
+  getTabViewState: (tab: Pick<FileTab, 'id' | 'path'> | null) => StoredFileViewState | null;
   getActiveTab: () => FileTab | null;
   getGroupTabs: (groupId: string) => FileTab[];
   getAllGroups: () => Extract<SplitNode, { type: 'leaf' }>[];
@@ -99,6 +109,89 @@ function getAllGroups(node: SplitNode): Extract<SplitNode, { type: 'leaf' }>[] {
   return node.children.flatMap(getAllGroups);
 }
 
+function findTabLocation(node: SplitNode, tabId: string): { groupId: string; tab: FileTab } | null {
+  if (node.type === 'leaf') {
+    const tab = node.tabs.find((candidate) => candidate.id === tabId);
+    return tab ? { groupId: node.id, tab } : null;
+  }
+
+  for (const child of node.children) {
+    const found = findTabLocation(child, tabId);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function normalizePathKey(path: string): string {
+  return path.replace(/\//g, '\\').toLowerCase();
+}
+
+function getTabViewStateKey(tab: Pick<FileTab, 'id' | 'path'> | null): string | null {
+  if (!tab) return null;
+  return tab.path ? normalizePathKey(tab.path) : `untitled:${tab.id}`;
+}
+
+function hasMeaningfulViewState(tab: Partial<FileTab>): boolean {
+  return (
+    typeof tab.cursorLine === 'number' &&
+    typeof tab.cursorColumn === 'number' &&
+    typeof tab.scrollTop === 'number' &&
+    !(tab.cursorLine === 1 && tab.cursorColumn === 1 && tab.scrollTop === 0)
+  );
+}
+
+function resolveViewState(state: Pick<EditorState, 'layout' | 'fileViewState'>, tab: FileTab, fallbackTab?: FileTab): StoredFileViewState {
+  const saved = state.fileViewState[getTabViewStateKey(tab) ?? ''];
+  if (saved) return saved;
+
+  if (hasMeaningfulViewState(tab)) {
+    return {
+      line: tab.cursorLine,
+      column: tab.cursorColumn,
+      scrollTop: tab.scrollTop,
+    };
+  }
+
+  if (fallbackTab) {
+    return {
+      line: fallbackTab.cursorLine,
+      column: fallbackTab.cursorColumn,
+      scrollTop: fallbackTab.scrollTop,
+    };
+  }
+
+  if (tab.path) {
+    const groups = getAllGroups(state.layout);
+    for (const group of groups) {
+      const openTab = group.tabs.find((candidate) => candidate.path === tab.path);
+      if (openTab) {
+        return {
+          line: openTab.cursorLine,
+          column: openTab.cursorColumn,
+          scrollTop: openTab.scrollTop,
+        };
+      }
+    }
+  }
+
+  return {
+    line: tab.cursorLine ?? 1,
+    column: tab.cursorColumn ?? 1,
+    scrollTop: tab.scrollTop ?? 0,
+  };
+}
+
+function applyViewState(state: Pick<EditorState, 'layout' | 'fileViewState'>, tab: FileTab, fallbackTab?: FileTab): FileTab {
+  const viewState = resolveViewState(state, tab, fallbackTab);
+  return {
+    ...tab,
+    cursorLine: viewState.line,
+    cursorColumn: viewState.column,
+    scrollTop: viewState.scrollTop,
+  };
+}
+
 export const useEditorStore = create<EditorState>((set, get) => ({
   layout: {
     type: 'leaf',
@@ -110,6 +203,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   closedTabs: [],
   cursorPosition: null,
   insertSnippet: null,
+  fileViewState: {},
 
   openTab: (groupId, tab) => {
     const state = get();
@@ -117,28 +211,30 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!group || group.type !== 'leaf') return;
     const existing = group.tabs.find((t) => t.id === tab.id || t.path === tab.path);
     if (existing) {
+      const nextTab = applyViewState(state, { ...existing, ...tab, id: existing.id }, existing);
       set({
         layout: updateGroup(state.layout, groupId, (leaf) => ({
           ...leaf,
           activeTabId: existing.id,
-          tabs: leaf.tabs.map((t) => t.id === existing.id ? { ...t, ...tab, id: existing.id } : t),
+          tabs: leaf.tabs.map((t) => t.id === existing.id ? nextTab : t),
         })),
         activeGroupId: groupId,
       });
     } else {
+      const nextTab = applyViewState(state, tab);
       // Replace preview tab if exists
       const previewIdx = group.tabs.findIndex((t) => t.isPreview);
       const newTabs = [...group.tabs];
       if (previewIdx >= 0) {
-        newTabs[previewIdx] = { ...tab, cursorLine: 1, cursorColumn: 1, scrollTop: 0 };
+        newTabs[previewIdx] = nextTab;
       } else {
-        newTabs.push({ ...tab, cursorLine: tab.cursorLine ?? 1, cursorColumn: tab.cursorColumn ?? 1, scrollTop: tab.scrollTop ?? 0 });
+        newTabs.push(nextTab);
       }
       set({
         layout: updateGroup(state.layout, groupId, (leaf) => ({
           ...leaf,
           tabs: newTabs,
-          activeTabId: tab.id,
+          activeTabId: nextTab.id,
         })),
         activeGroupId: groupId,
       });
@@ -165,7 +261,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
 
     const ext = getFileExtension(path);
-    const newTab: FileTab = {
+    const baseTab: FileTab = {
       id: generateId(),
       path,
       name: getFileName(path),
@@ -178,6 +274,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       scrollTop: 0,
       language: getLanguageFromExtension(ext),
     };
+    const newTab = applyViewState(state, baseTab);
 
     set({
       layout: updateGroup(state.layout, targetGroupId, (leaf) => {
@@ -206,7 +303,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     const tab = group.tabs.find((t) => t.id === tabId);
     if (tab) {
-      const closedTabs = [tab, ...state.closedTabs].slice(0, 20);
+      const closedTabs = [applyViewState(state, tab), ...state.closedTabs].slice(0, 20);
       const newTabs = group.tabs.filter((t) => t.id !== tabId);
       const tabIdx = group.tabs.findIndex((t) => t.id === tabId);
       const newActiveId =
@@ -304,22 +401,42 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   markTabSaved: (groupId, tabId, path) => {
-    set((state) => ({
-      layout: updateGroup(state.layout, groupId, (leaf) => ({
-        ...leaf,
-        tabs: leaf.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                isModified: false,
-                ...(path
-                  ? { path, name: getFileName(path) }
-                  : {}),
-              }
-            : t
-        ),
-      })),
-    }));
+    const location = findTabLocation(get().layout, tabId);
+    set((state) => {
+      const nextViewState = { ...state.fileViewState };
+      if (path && location) {
+        const resolvedViewState = resolveViewState(state, location.tab);
+        const nextKey = normalizePathKey(path);
+        nextViewState[nextKey] = {
+          line: resolvedViewState.line,
+          column: resolvedViewState.column,
+          scrollTop: resolvedViewState.scrollTop,
+        };
+
+        const previousKey = getTabViewStateKey(location.tab);
+        if (previousKey && previousKey !== nextKey) {
+          delete nextViewState[previousKey];
+        }
+      }
+
+      return {
+        layout: updateGroup(state.layout, groupId, (leaf) => ({
+          ...leaf,
+          tabs: leaf.tabs.map((t) =>
+            t.id === tabId
+              ? {
+                  ...t,
+                  isModified: false,
+                  ...(path
+                    ? { path, name: getFileName(path) }
+                    : {}),
+                }
+              : t
+          ),
+        })),
+        fileViewState: nextViewState,
+      };
+    });
   },
 
   pinTab: (groupId, tabId) => {
@@ -460,7 +577,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const state = get();
     if (state.closedTabs.length === 0) return;
     const [tab, ...rest] = state.closedTabs;
-    get().openFile(tab.path, tab.content, state.activeGroupId, false);
+    get().openTab(state.activeGroupId, { ...tab, isPreview: false });
     set({ closedTabs: rest });
   },
 
@@ -573,20 +690,57 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
   },
 
-  updateCursorPosition: (groupId, tabId, line, column) => {
-    set((state) => ({
-      layout: updateGroup(state.layout, groupId, (leaf) => ({
-        ...leaf,
-        tabs: leaf.tabs.map((t) =>
-          t.id === tabId ? { ...t, cursorLine: line, cursorColumn: column } : t
-        ),
-      })),
-    }));
+  updateCursorPosition: (_groupId, tabId, line, column) => {
+    const location = findTabLocation(get().layout, tabId);
+    set((state) => {
+      const nextViewState = { ...state.fileViewState };
+      if (location) {
+        const key = getTabViewStateKey(location.tab);
+        const existing = key ? nextViewState[key] : null;
+        if (!key) return { fileViewState: nextViewState };
+
+        nextViewState[key] = {
+          line,
+          column,
+          scrollTop: existing?.scrollTop ?? location.tab.scrollTop ?? 0,
+        };
+      }
+
+      return { fileViewState: nextViewState };
+    });
+  },
+
+  updateScrollPosition: (_groupId, tabId, scrollTop) => {
+    const location = findTabLocation(get().layout, tabId);
+    set((state) => {
+      const nextViewState = { ...state.fileViewState };
+      if (location) {
+        const key = getTabViewStateKey(location.tab);
+        const existing = key ? nextViewState[key] : null;
+        if (!key) return { fileViewState: nextViewState };
+
+        nextViewState[key] = {
+          line: existing?.line ?? location.tab.cursorLine ?? 1,
+          column: existing?.column ?? location.tab.cursorColumn ?? 1,
+          scrollTop,
+        };
+      }
+
+      return { fileViewState: nextViewState };
+    });
   },
 
   setCursorPosition: (line, column) => set({ cursorPosition: { line, column } }),
 
   setInsertSnippetFn: (fn) => set({ insertSnippet: fn }),
+
+  hydrateFileViewState: (viewState) => set({ fileViewState: viewState }),
+
+  getTabViewState: (tab) => {
+    const key = getTabViewStateKey(tab);
+    if (!key) return null;
+    return get().fileViewState[key] ?? null;
+  },
 
   getActiveTab: () => {
     const state = get();

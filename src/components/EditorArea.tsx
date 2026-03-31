@@ -175,6 +175,8 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
   const moveTab = useEditorStore((s) => s.moveTab);
   const removeGroup = useEditorStore((s) => s.removeGroup);
   const updateCursorPosition = useEditorStore((s) => s.updateCursorPosition);
+  const updateScrollPosition = useEditorStore((s) => s.updateScrollPosition);
+  const getTabViewState = useEditorStore((s) => s.getTabViewState);
   const totalGroups = useEditorStore((s) => s.getAllGroups().length);
   const setInsertSnippetFn = useEditorStore((s) => s.setInsertSnippetFn);
   const setCursorPosition = useEditorStore((s) => s.setCursorPosition);
@@ -190,8 +192,35 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
 
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof import('monaco-editor') | null>(null);
+  const lastLocalContentRef = useRef<string | null>(null);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
+
+  const restoreEditorViewState = useCallback(
+    (tab: FileTab | null, revealInCenter = false) => {
+      const ed = editorRef.current;
+      if (!ed || !tab) return;
+
+      const viewState = getTabViewState(tab) ?? {
+        line: tab.cursorLine,
+        column: tab.cursorColumn,
+        scrollTop: tab.scrollTop,
+      };
+
+      setTimeout(() => {
+        ed.setPosition({ lineNumber: viewState.line, column: viewState.column });
+
+        if (viewState.scrollTop > 0) {
+          ed.setScrollTop(viewState.scrollTop);
+        } else if (revealInCenter) {
+          ed.revealLineInCenter(viewState.line);
+        } else {
+          ed.revealLine(viewState.line);
+        }
+      }, 0);
+    },
+    [getTabViewState]
+  );
 
   const handleFocus = useCallback(() => {
     if (groupId !== activeGroupId) {
@@ -324,11 +353,14 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
         }
       });
 
-      // Restore cursor position from tab data
-      if (activeTab && activeTab.cursorLine && activeTab.cursorColumn) {
-        editor.setPosition({ lineNumber: activeTab.cursorLine, column: activeTab.cursorColumn });
-        editor.revealLine(activeTab.cursorLine);
-      }
+      editor.onDidScrollChange((e) => {
+        if (activeTab) {
+          updateScrollPosition(groupId, activeTab.id, e.scrollTop);
+        }
+      });
+
+      restoreEditorViewState(activeTab);
+      lastLocalContentRef.current = activeTab?.content ?? editor.getValue();
 
       // Set initial cursor position for status bar
       const pos = editor.getPosition();
@@ -336,12 +368,13 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
         setCursorPosition(pos.lineNumber, pos.column);
       }
     },
-    [currentScheme, activeTab, markSaved, success, error, handleFocus, setCursorPosition]
+    [currentScheme, activeTab, markSaved, success, error, handleFocus, setCursorPosition, restoreEditorViewState, updateScrollPosition, groupId, updateCursorPosition]
   );
 
   const handleEditorChange = useCallback(
     (value: string | undefined) => {
       if (activeTab && value !== undefined) {
+        lastLocalContentRef.current = value;
         updateTabContent(activeTab.id, value);
         if (activeTab.path) {
           triggerAutoSave(activeTab.path, value);
@@ -361,6 +394,29 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
     },
     [currentScheme]
   );
+
+  // Restore cursor and scroll state when switching tabs.
+  useEffect(() => {
+    if (activeTab) {
+      const viewState = getTabViewState(activeTab) ?? {
+        line: activeTab.cursorLine,
+        column: activeTab.cursorColumn,
+        scrollTop: activeTab.scrollTop,
+      };
+      lastLocalContentRef.current = activeTab.content;
+      restoreEditorViewState(activeTab, true);
+      setCursorPosition(viewState.line, viewState.column);
+    }
+  }, [activeTab?.id, activeTab?.path, getTabViewState, restoreEditorViewState, setCursorPosition]);
+
+  // If the file content is refreshed from disk, restore the previous view state.
+  useEffect(() => {
+    if (!activeTab) return;
+    if (lastLocalContentRef.current === activeTab.content) return;
+
+    restoreEditorViewState(activeTab);
+    lastLocalContentRef.current = activeTab.content;
+  }, [activeTab?.content, activeTab?.id, activeTab?.path, restoreEditorViewState]);
 
   const handleSplitH = useCallback(() => {
     splitGroup(groupId, 'horizontal');
@@ -421,36 +477,59 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
             onDragLeave={handleGroupDragLeave}
             onDrop={handleGroupDrop}
           />
-          <Editor
-            key={activeTab.id}
-            height="100%"
-            language={activeTab.language}
-            value={activeTab.content}
-            theme={currentScheme.id}
-            onChange={handleEditorChange}
-            onMount={handleEditorMount}
-            beforeMount={handleEditorBeforeMount}
-            options={{
-              fontSize: settings.editor.fontSize,
-              fontFamily: settings.editor.fontFamily,
-              fontWeight: settings.editor.fontWeight as any,
-              tabSize: settings.editor.tabSize,
-              wordWrap: settings.editor.wordWrap as 'on' | 'off' | 'wordWrapColumn' | 'bounded',
-              minimap: { enabled: settings.editor.minimap },
-              lineNumbers: settings.editor.lineNumbers as editor.IEditorOptions['lineNumbers'],
-              renderWhitespace: settings.editor.renderWhitespace as 'all' | 'none' | 'boundary' | 'selection' | 'trailing',
-              bracketPairColorization: { enabled: settings.editor.bracketPairColorization },
-              smoothScrolling: settings.editor.smoothScrolling,
-              cursorBlinking: settings.editor.cursorBlinking as editor.IEditorOptions['cursorBlinking'],
-              cursorStyle: settings.editor.cursorStyle as editor.IEditorOptions['cursorStyle'],
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              padding: { top: 8 },
-              suggest: { showSnippets: true },
-              quickSuggestions: true,
-            }}
-            {...(settings.editor.fontStyle === 'italic' ? { style: { fontStyle: 'italic' } } : {})}
-          />
+          <div className={`monaco-wrapper ${settings.editor.fontStyle === 'italic' ? 'font-italic' : ''}`}>
+            <Editor
+              key={activeTab.id}
+              height="100%"
+              language={activeTab.language}
+              value={activeTab.content}
+              theme={currentScheme.id}
+              onChange={handleEditorChange}
+              onMount={handleEditorMount}
+              beforeMount={handleEditorBeforeMount}
+              options={{
+                fontSize: settings.editor.fontSize,
+                fontFamily: settings.editor.fontFamily,
+                fontLigatures: settings.editor.fontLigatures,
+                fontWeight: settings.editor.fontWeight as any,
+                lineHeight: Math.round(settings.editor.fontSize * settings.editor.lineHeight),
+                tabSize: settings.editor.tabSize,
+                insertSpaces: settings.editor.insertSpaces,
+                wordWrap: settings.editor.wordWrap as 'on' | 'off' | 'wordWrapColumn' | 'bounded',
+                wordWrapColumn: settings.editor.wordWrapColumn,
+                minimap: { enabled: settings.editor.minimap },
+                lineNumbers: settings.editor.lineNumbers as editor.IEditorOptions['lineNumbers'],
+                renderWhitespace: settings.editor.renderWhitespace as 'all' | 'none' | 'boundary' | 'selection' | 'trailing',
+                bracketPairColorization: { enabled: settings.editor.bracketPairColorization },
+                autoClosingBrackets: settings.editor.autoClosingBrackets,
+                autoClosingQuotes: settings.editor.autoClosingQuotes,
+                formatOnPaste: settings.editor.formatOnPaste,
+                formatOnType: settings.editor.formatOnType,
+                smoothScrolling: settings.editor.smoothScrolling,
+                cursorWidth: settings.editor.cursorWidth,
+                cursorBlinking: settings.editor.cursorBlinking as editor.IEditorOptions['cursorBlinking'],
+                cursorStyle: settings.editor.cursorStyle as editor.IEditorOptions['cursorStyle'],
+                mouseWheelZoom: false,
+                stickyScroll: { enabled: settings.editor.stickyScroll },
+                linkedEditing: settings.editor.linkedEditing,
+                guides: {
+                  indentation: settings.editor.guides.indentation,
+                  bracketPairs: settings.editor.guides.bracketPairs,
+                },
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                padding: { top: 8 },
+                suggest: {
+                  showSnippets: settings.editor.snippetSuggestions !== 'none',
+                  snippetsPreventQuickSuggestions: false,
+                },
+                snippetSuggestions: settings.editor.snippetSuggestions,
+                suggestOnTriggerCharacters: settings.editor.suggestOnTriggerCharacters,
+                acceptSuggestionOnEnter: settings.editor.acceptSuggestionOnEnter,
+                quickSuggestions: true,
+              }}
+            />
+          </div>
         </div>
       ) : null}
     </div>

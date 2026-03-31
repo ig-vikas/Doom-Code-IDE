@@ -58,6 +58,9 @@ export default function App() {
         const settings = await loadConfig<AppSettings>('settings.json');
         if (settings) {
           useSettingsStore.getState().loadSettings(settings);
+          if (settings.ui?.zoomLevel) {
+            useUIStore.setState({ zoomLevel: settings.ui.zoomLevel });
+          }
           if (settings.ui?.theme) {
             setTheme(settings.ui.theme);
           }
@@ -153,7 +156,7 @@ export default function App() {
     document.documentElement.style.fontSize = `${uiFontSize || 13}px`;
   }, [uiFontSize]);
 
-  // Apply zoom level (scales entire app uniformly)
+  // Apply zoom level (scales the entire app uniformly)
   useEffect(() => {
     document.body.style.zoom = `${zoomLevel / 100}`;
   }, [zoomLevel]);

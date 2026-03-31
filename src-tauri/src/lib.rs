@@ -3,7 +3,11 @@ mod state;
 mod utils;
 
 use state::AppState;
-use tauri::Manager;
+use tauri::{LogicalSize, Manager, Size};
+
+const DEFAULT_WINDOW_WIDTH: f64 = 1200.0;
+const DEFAULT_WINDOW_HEIGHT: f64 = 750.0;
+const WINDOW_MARGIN: f64 = 48.0;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -17,6 +21,7 @@ pub fn run() {
         .setup(|app| {
             // Set the window icon for taskbar/alt-tab on Windows
             if let Some(window) = app.get_webview_window("main") {
+                fit_window_to_monitor(&window)?;
                 let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))
                     .expect("Failed to load app icon");
                 let _ = window.set_icon(icon);
@@ -54,4 +59,17 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Doom Code");
+}
+
+fn fit_window_to_monitor(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    if let Some(monitor) = window.current_monitor()? {
+        let logical_size = monitor.size().to_logical::<f64>(monitor.scale_factor());
+        let width = DEFAULT_WINDOW_WIDTH.min((logical_size.width - WINDOW_MARGIN).max(640.0));
+        let height = DEFAULT_WINDOW_HEIGHT.min((logical_size.height - WINDOW_MARGIN).max(480.0));
+
+        window.set_size(Size::Logical(LogicalSize::new(width, height)))?;
+    }
+
+    window.center()?;
+    Ok(())
 }

@@ -8,6 +8,7 @@ import { nordTheme } from '../themes/nord';
 import { gruvboxTheme } from '../themes/gruvbox';
 import { tokyoNightTheme } from '../themes/tokyoNight';
 import { jetbrainsTheme } from '../themes/jetbrains';
+import { vscodeDarkTheme } from '../themes/vscodeDark';
 import {
   loadCustomThemes,
   saveCustomTheme,
@@ -18,6 +19,7 @@ import {
 import { generateId } from '../utils/fileUtils';
 
 const builtInThemes: ThemeDefinition[] = [
+  vscodeDarkTheme,
   obsidianTheme,
   dawnTheme,
   monokaiTheme,
@@ -42,10 +44,10 @@ interface ThemeState {
 }
 
 export const useThemeStore = create<ThemeState>((set, get) => ({
-  currentTheme: obsidianTheme,
+  currentTheme: vscodeDarkTheme,
   themes: builtInThemes,
   customThemes: [],
-  colors: obsidianTheme.colors,
+  colors: vscodeDarkTheme.colors,
 
   setTheme: (id) => {
     const state = get();
@@ -113,11 +115,11 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
       themes: [...builtInThemes, ...newCustom],
       // If deleting the active theme, switch to default
       ...(state.currentTheme.id === id
-        ? { currentTheme: obsidianTheme, colors: obsidianTheme.colors }
+        ? { currentTheme: vscodeDarkTheme, colors: vscodeDarkTheme.colors }
         : {}),
     });
     if (state.currentTheme.id === id) {
-      applyThemeToDom(obsidianTheme);
+      applyThemeToDom(vscodeDarkTheme);
     }
   },
 }));

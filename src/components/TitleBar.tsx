@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useUIStore } from '../stores';
 import { useSolveCounterStore } from '../stores/solveCounterStore';
@@ -35,19 +35,28 @@ export default function TitleBar() {
     await getCurrentWindow().close();
   }, []);
 
+  useEffect(() => {
+    const syncWindowState = async () => {
+      const win = getCurrentWindow();
+      setMaximized(await win.isMaximized());
+    };
+
+    syncWindowState();
+  }, []);
+
   return (
-    <div className="titlebar">
+    <div className="titlebar" data-tauri-drag-region>
       <div className="titlebar-logo">
         <img src={appIcon} alt="Doom Code" className="titlebar-icon" />
         <span>Doom Code</span>
       </div>
       <MenuBar />
-      <div className="solve-counter" data-tauri-drag-region="false">
-        <button className="solve-counter-btn" onClick={decrement} title="Undo solve">
+      <div className="solve-counter">
+        <button type="button" className="solve-counter-btn" onClick={decrement} title="Undo solve">
           <VscRemove />
         </button>
         <span className="solve-counter-value" title="Questions solved today">{todayCount}</span>
-        <button className="solve-counter-btn plus" onClick={increment} title="Mark solved">
+        <button type="button" className="solve-counter-btn plus" onClick={increment} title="Mark solved">
           <VscAdd />
         </button>
       </div>
@@ -55,13 +64,13 @@ export default function TitleBar() {
         {!windowFocused && <span style={{ opacity: 0.5 }}>Doom Code</span>}
       </div>
       <div className="titlebar-controls">
-        <button className="titlebar-btn" onClick={handleMinimize} aria-label="Minimize">
+        <button type="button" className="titlebar-btn" onClick={handleMinimize} aria-label="Minimize">
           <VscChromeMinimize />
         </button>
-        <button className="titlebar-btn" onClick={handleToggleMaximize} aria-label="Maximize">
+        <button type="button" className="titlebar-btn" onClick={handleToggleMaximize} aria-label="Maximize">
           {maximized ? <VscChromeRestore /> : <VscChromeMaximize />}
         </button>
-        <button className="titlebar-btn close" onClick={handleClose} aria-label="Close">
+        <button type="button" className="titlebar-btn close" onClick={handleClose} aria-label="Close">
           <VscChromeClose />
         </button>
       </div>

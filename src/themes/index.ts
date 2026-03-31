@@ -5,6 +5,7 @@ export { draculaTheme } from './dracula';
 export { nordTheme } from './nord';
 export { gruvboxTheme } from './gruvbox';
 export { tokyoNightTheme } from './tokyoNight';
+export { vscodeDarkTheme } from './vscodeDark';
 
 import { obsidianTheme } from './obsidian';
 import { dawnTheme } from './dawn';
@@ -13,9 +14,11 @@ import { draculaTheme } from './dracula';
 import { nordTheme } from './nord';
 import { gruvboxTheme } from './gruvbox';
 import { tokyoNightTheme } from './tokyoNight';
+import { vscodeDarkTheme } from './vscodeDark';
 import type { ThemeDefinition } from '../types';
 
 export const allThemes: ThemeDefinition[] = [
+  vscodeDarkTheme,
   obsidianTheme,
   dawnTheme,
   monokaiTheme,

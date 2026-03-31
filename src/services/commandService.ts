@@ -901,6 +901,7 @@ interface SessionData {
   bottomPanelVisible: boolean;
   bottomPanelHeight: number;
   zoomLevel: number;
+  fileViewState: Record<string, { line: number; column: number; scrollTop: number }>;
 }
 
 export async function saveSession() {
@@ -918,6 +919,7 @@ export async function saveSession() {
     bottomPanelVisible: ui.bottomPanelVisible,
     bottomPanelHeight: ui.bottomPanelHeight,
     zoomLevel: ui.zoomLevel,
+    fileViewState: editor.fileViewState,
   };
 
   try {
@@ -956,9 +958,11 @@ export async function restoreSession() {
     // Restore editor tabs — reload content from disk for saved files
     if (session.layout) {
       const restoredLayout = await restoreLayoutContent(session.layout);
+      const restoredFileViewState = session.fileViewState ?? extractFileViewStateFromLayout(restoredLayout);
       useEditorStore.setState({
         layout: restoredLayout,
         activeGroupId: session.activeGroupId || (restoredLayout as any).id,
+        fileViewState: restoredFileViewState,
       });
     }
   } catch {}
@@ -992,4 +996,34 @@ async function restoreLayoutContent(node: any): Promise<any> {
     return { ...node, children };
   }
   return node;
+}
+
+function extractFileViewStateFromLayout(node: any): Record<string, { line: number; column: number; scrollTop: number }> {
+  if (!node) return {};
+
+  if (node.type === 'leaf') {
+    return node.tabs.reduce((acc: Record<string, { line: number; column: number; scrollTop: number }>, tab: any) => {
+      const key = tab.path
+        ? tab.path.replace(/\//g, '\\').toLowerCase()
+        : `untitled:${tab.id}`;
+      acc[key] = {
+        line: tab.cursorLine ?? 1,
+        column: tab.cursorColumn ?? 1,
+        scrollTop: tab.scrollTop ?? 0,
+      };
+      return acc;
+    }, {});
+  }
+
+  if (node.type === 'split') {
+    return node.children.reduce(
+      (acc: Record<string, { line: number; column: number; scrollTop: number }>, child: any) => ({
+        ...acc,
+        ...extractFileViewStateFromLayout(child),
+      }),
+      {}
+    );
+  }
+
+  return {};
 }

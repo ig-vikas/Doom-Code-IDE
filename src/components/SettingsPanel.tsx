@@ -20,6 +20,16 @@ const categories: { id: SettingsCategory; label: string }[] = [
   { id: 'statistics', label: 'Statistics' },
 ];
 
+const editorFontPresets = [
+  { label: 'VS Code', value: '"Consolas", "Courier New", monospace' },
+  { label: 'JetBrains Mono', value: '"JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace' },
+  { label: 'Fira Code', value: '"Fira Code", "JetBrains Mono", "Cascadia Code", "Consolas", monospace' },
+  { label: 'Cascadia Code', value: '"Cascadia Code", "JetBrains Mono", "Consolas", monospace' },
+  { label: 'Consolas', value: '"Consolas", "Courier New", monospace' },
+  { label: 'Source Code Pro', value: '"Source Code Pro", "JetBrains Mono", "Consolas", monospace' },
+  { label: 'IBM Plex Mono', value: '"IBM Plex Mono", "JetBrains Mono", "Consolas", monospace' },
+];
+
 export default function SettingsPanel() {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('editor');
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
@@ -93,6 +103,19 @@ function EditorSettings() {
     <div>
       <div className="settings-section">
         <div className="settings-section-title">Font</div>
+        <SettingRow label="Font Preset" description="Quickly switch between common coding fonts">
+          <select
+            className="settings-select"
+            value={settings.fontFamily}
+            onChange={(e) => updateEditor({ fontFamily: e.target.value })}
+          >
+            {editorFontPresets.map((preset) => (
+              <option key={preset.label} value={preset.value}>
+                {preset.label}
+              </option>
+            ))}
+          </select>
+        </SettingRow>
         <SettingRow label="Font Family" description="Controls the editor font family">
           <input
             type="text"
@@ -135,6 +158,33 @@ function EditorSettings() {
         </SettingRow>
         <SettingRow label="Font Ligatures" description="Enable font ligatures">
           <ToggleSwitch value={settings.fontLigatures} onChange={(v) => updateEditor({ fontLigatures: v })} />
+        </SettingRow>
+        <SettingRow label="Font Weight" description="Controls the font weight">
+          <select
+            className="settings-select"
+            value={settings.fontWeight}
+            onChange={(e) => updateEditor({ fontWeight: e.target.value as any })}
+          >
+            <option value="normal">Normal</option>
+            <option value="bold">Bold</option>
+            <option value="300">Light (300)</option>
+            <option value="400">Regular (400)</option>
+            <option value="500">Medium (500)</option>
+            <option value="600">Semi-Bold (600)</option>
+            <option value="700">Bold (700)</option>
+            <option value="800">Extra-Bold (800)</option>
+            <option value="900">Black (900)</option>
+          </select>
+        </SettingRow>
+        <SettingRow label="Font Style" description="Controls the font style (normal or italic)">
+          <select
+            className="settings-select"
+            value={settings.fontStyle}
+            onChange={(e) => updateEditor({ fontStyle: e.target.value as any })}
+          >
+            <option value="normal">Normal</option>
+            <option value="italic">Italic</option>
+          </select>
         </SettingRow>
       </div>
 
@@ -218,9 +268,6 @@ function EditorSettings() {
             <option value="inline">Inline</option>
             <option value="none">None</option>
           </select>
-        </SettingRow>
-        <SettingRow label="Mouse Wheel Zoom" description="Zoom editor with Ctrl+Scroll">
-          <ToggleSwitch value={settings.mouseWheelZoom} onChange={(v) => updateEditor({ mouseWheelZoom: v })} />
         </SettingRow>
         <SettingRow label="Sticky Scroll" description="Show sticky scroll at the top">
           <ToggleSwitch value={settings.stickyScroll} onChange={(v) => updateEditor({ stickyScroll: v })} />
@@ -402,8 +449,8 @@ function AppearanceSettings() {
               const ui = useUIStore.getState();
               const v = Number(e.target.value);
               // Directly set zoom
-              (ui as any).zoomLevel = v;
               useUIStore.setState({ zoomLevel: v });
+              updateUI({ zoomLevel: v });
             }}
             style={{ width: 120 }}
           />
