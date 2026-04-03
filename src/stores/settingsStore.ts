@@ -5,6 +5,7 @@ import {
   DEFAULT_EDITOR_FONT_FAMILY,
   isAllowedAppThemeId,
   isAllowedEditorFontFamily,
+  isAllowedEditorSchemeId,
   LOCKED_APP_THEME_ID,
   LOCKED_EDITOR_SCHEME_ID,
 } from '../config/lockedAppearance';
@@ -20,7 +21,7 @@ function clampUISettings(ui: AppSettings['ui']): AppSettings['ui'] {
   return {
     ...ui,
     theme: isAllowedAppThemeId(ui.theme) ? ui.theme : LOCKED_APP_THEME_ID,
-    editorColorScheme: LOCKED_EDITOR_SCHEME_ID,
+    editorColorScheme: isAllowedEditorSchemeId(ui.editorColorScheme) ? ui.editorColorScheme : LOCKED_EDITOR_SCHEME_ID,
   };
 }
 

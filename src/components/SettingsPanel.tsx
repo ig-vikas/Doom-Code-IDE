@@ -271,7 +271,9 @@ function AppearanceSettings() {
   const currentTheme = useThemeStore((s) => s.currentTheme);
   const themes = useThemeStore((s) => s.themes);
   const setTheme = useThemeStore((s) => s.setTheme);
+  const schemes = useEditorSchemeStore((s) => s.schemes);
   const currentScheme = useEditorSchemeStore((s) => s.currentScheme);
+  const setScheme = useEditorSchemeStore((s) => s.setScheme);
   const settings = useSettingsStore((s) => s.settings.ui);
   const updateUI = useSettingsStore((s) => s.updateUI);
   const zoomLevel = useUIStore((s) => s.zoomLevel);
@@ -291,11 +293,14 @@ function AppearanceSettings() {
     };
   };
 
-  const preview = getSchemePreviewColors(currentScheme);
-
   const handleThemeSelect = (themeId: string) => {
     setTheme(themeId);
     updateUI({ theme: themeId });
+  };
+
+  const handleSchemeSelect = (schemeId: string) => {
+    setScheme(schemeId);
+    updateUI({ editorColorScheme: schemeId });
   };
 
   return (
@@ -343,34 +348,45 @@ function AppearanceSettings() {
       <div className="settings-section">
         <div className="settings-section-title">Editor Color Scheme</div>
         <div style={{ fontSize: '0.846rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-          Editor scheme is locked to Dark+ (VS Code).
+          Choose an editor color scheme.
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8, marginBottom: 16 }}>
-          <div
-            className="editor-scheme-card"
-            style={{
-              border: '2px solid var(--accent-primary)',
-              background: preview.bg,
-            }}
-          >
-            <div className="editor-scheme-preview">
-              <span style={{ color: `#${preview.comment}`, fontStyle: 'italic' }}>{'// code'}</span>
-              <span><span style={{ color: `#${preview.keyword}` }}>int</span> <span style={{ color: `#${preview.fn}` }}>main</span><span style={{ color: preview.fg }}>() {'{'}</span></span>
-              <span>{'  '}<span style={{ color: `#${preview.keyword}` }}>return</span> <span style={{ color: `#${preview.number}` }}>0</span><span style={{ color: preview.fg }}>;</span></span>
-              <span style={{ color: preview.fg }}>{'}'}</span>
-            </div>
-            <div className="editor-scheme-info">
-              <div className="editor-scheme-name">{currentScheme.name}</div>
-              <div className="editor-scheme-tokens">
-                <span style={{ background: `#${preview.keyword}` }} />
-                <span style={{ background: `#${preview.string}` }} />
-                <span style={{ background: `#${preview.fn}` }} />
-                <span style={{ background: `#${preview.type}` }} />
-                <span style={{ background: `#${preview.number}` }} />
-                <span style={{ background: `#${preview.comment}` }} />
-              </div>
-            </div>
-          </div>
+          {schemes.map((scheme) => {
+            const schemePreview = getSchemePreviewColors(scheme);
+            const isActive = currentScheme.id === scheme.id;
+            return (
+              <button
+                key={scheme.id}
+                type="button"
+                className="editor-scheme-card"
+                onClick={() => handleSchemeSelect(scheme.id)}
+                style={{
+                  border: isActive ? '2px solid var(--accent-primary)' : '1px solid var(--border-default)',
+                  background: schemePreview.bg,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <div className="editor-scheme-preview">
+                  <span style={{ color: `#${schemePreview.comment}`, fontStyle: 'italic' }}>{'// code'}</span>
+                  <span><span style={{ color: `#${schemePreview.keyword}` }}>int</span> <span style={{ color: `#${schemePreview.fn}` }}>main</span><span style={{ color: schemePreview.fg }}>() {'{'}</span></span>
+                  <span>{'  '}<span style={{ color: `#${schemePreview.keyword}` }}>return</span> <span style={{ color: `#${schemePreview.number}` }}>0</span><span style={{ color: schemePreview.fg }}>;</span></span>
+                  <span style={{ color: schemePreview.fg }}>{'}'}</span>
+                </div>
+                <div className="editor-scheme-info">
+                  <div className="editor-scheme-name">{scheme.name}</div>
+                  <div className="editor-scheme-tokens">
+                    <span style={{ background: `#${schemePreview.keyword}` }} />
+                    <span style={{ background: `#${schemePreview.string}` }} />
+                    <span style={{ background: `#${schemePreview.fn}` }} />
+                    <span style={{ background: `#${schemePreview.type}` }} />
+                    <span style={{ background: `#${schemePreview.number}` }} />
+                    <span style={{ background: `#${schemePreview.comment}` }} />
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 

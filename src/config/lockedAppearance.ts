@@ -1,7 +1,13 @@
 export const LOCKED_APP_THEME_ID = 'vscode-dark';
 export const FORGE_APP_THEME_ID = 'vscode-dark-forge';
-export const LOCKED_EDITOR_SCHEME_ID = 'vscode-dark-plus';
+export const LOCKED_EDITOR_SCHEME_ID = 'vscode-dark-plus-plus';
+export const FORGE_EDITOR_SCHEME_ID = 'vscode-dark-plus-plus-forge';
 export const ALLOWED_APP_THEME_IDS = [LOCKED_APP_THEME_ID, FORGE_APP_THEME_ID] as const;
+export const ALLOWED_EDITOR_SCHEME_IDS = [
+  LOCKED_EDITOR_SCHEME_ID,
+  FORGE_EDITOR_SCHEME_ID,
+  'vscode-dark-plus',
+] as const;
 
 export const EDITOR_FONT_OPTIONS = [
   { label: 'JetBrains Mono', value: '"JetBrains Mono", monospace' },
@@ -19,4 +25,8 @@ export function isAllowedEditorFontFamily(fontFamily: string): boolean {
 
 export function isAllowedAppThemeId(themeId: string): boolean {
   return ALLOWED_APP_THEME_IDS.some((allowedThemeId) => allowedThemeId === themeId);
+}
+
+export function isAllowedEditorSchemeId(schemeId: string): boolean {
+  return ALLOWED_EDITOR_SCHEME_IDS.some((allowedSchemeId) => allowedSchemeId === schemeId);
 }

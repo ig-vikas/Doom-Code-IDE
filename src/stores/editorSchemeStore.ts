@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { EditorColorScheme } from '../types/editorScheme';
-import { vscodeDarkPlus } from '../editorSchemes';
+import { vscodeDarkPlus, vscodeDarkPlusPlus, vscodeDarkPlusPlusForge } from '../editorSchemes';
 
 interface EditorSchemeState {
   currentScheme: EditorColorScheme;
@@ -14,26 +14,22 @@ interface EditorSchemeState {
   loadCustomSchemesFromDisk: () => Promise<void>;
 }
 
-const exclusiveScheme = vscodeDarkPlus;
-const builtInSchemes: EditorColorScheme[] = [exclusiveScheme];
+const defaultScheme = vscodeDarkPlusPlus;
+const builtInSchemes: EditorColorScheme[] = [vscodeDarkPlusPlus, vscodeDarkPlusPlusForge, vscodeDarkPlus];
 
 export const useEditorSchemeStore = create<EditorSchemeState>((set, get) => ({
-  currentScheme: vscodeDarkPlus,
+  currentScheme: defaultScheme,
   schemes: builtInSchemes,
   customSchemes: [],
 
   setScheme: (id) => {
-    if (id === exclusiveScheme.id) {
-      set({ currentScheme: exclusiveScheme });
-      return;
-    }
-    // Editor scheme is intentionally locked to Dark+ (VS Code).
-    set({ currentScheme: exclusiveScheme });
+    const selectedScheme = builtInSchemes.find((scheme) => scheme.id === id) ?? defaultScheme;
+    set({ currentScheme: selectedScheme });
   },
 
   addCustomScheme: (_scheme) => {
     set({
-      currentScheme: exclusiveScheme,
+      currentScheme: get().currentScheme,
       schemes: builtInSchemes,
       customSchemes: [],
     });
@@ -41,7 +37,7 @@ export const useEditorSchemeStore = create<EditorSchemeState>((set, get) => ({
 
   updateCustomScheme: (_scheme) => {
     set({
-      currentScheme: exclusiveScheme,
+      currentScheme: get().currentScheme,
       schemes: builtInSchemes,
       customSchemes: [],
     });
@@ -49,7 +45,7 @@ export const useEditorSchemeStore = create<EditorSchemeState>((set, get) => ({
 
   removeCustomScheme: (_id) => {
     set({
-      currentScheme: exclusiveScheme,
+      currentScheme: get().currentScheme,
       schemes: builtInSchemes,
       customSchemes: [],
     });
@@ -62,7 +58,7 @@ export const useEditorSchemeStore = create<EditorSchemeState>((set, get) => ({
 
   loadCustomSchemesFromDisk: async () => {
     set({
-      currentScheme: exclusiveScheme,
+      currentScheme: get().currentScheme,
       schemes: builtInSchemes,
       customSchemes: [],
     });
