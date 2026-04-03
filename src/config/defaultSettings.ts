@@ -1,8 +1,13 @@
 import type { AppSettings } from '../types';
+import {
+  DEFAULT_EDITOR_FONT_FAMILY,
+  LOCKED_APP_THEME_ID,
+  LOCKED_EDITOR_SCHEME_ID,
+} from './lockedAppearance';
 
 export const defaultSettings: AppSettings = {
   editor: {
-    fontFamily: '"Consolas", "Courier New", monospace',
+    fontFamily: DEFAULT_EDITOR_FONT_FAMILY,
     fontSize: 15,
     lineHeight: 1.7,
     tabSize: 4,
@@ -36,8 +41,8 @@ export const defaultSettings: AppSettings = {
     },
   },
   ui: {
-    theme: 'vscode-dark',
-    editorColorScheme: 'vscode-dark-plus',
+    theme: LOCKED_APP_THEME_ID,
+    editorColorScheme: LOCKED_EDITOR_SCHEME_ID,
     sidebarWidth: 260,
     sidebarVisible: true,
     bottomPanelHeight: 250,

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 
 export type SidebarView = 'explorer' | 'search' | 'snippets' | 'settings';
 export type BottomPanelView = 'testcases' | 'output' | 'terminal';
+export type FocusedPanel = 'editor' | 'sidebar' | 'bottom' | null;
+export type SaveIndicatorState = 'idle' | 'saving' | 'saved';
 
 interface UIState {
   sidebarVisible: boolean;
@@ -17,6 +19,8 @@ interface UIState {
   zoomLevel: number;
   windowMaximized: boolean;
   windowFocused: boolean;
+  focusedPanel: FocusedPanel;
+  saveIndicatorState: SaveIndicatorState;
 
   toggleSidebar: () => void;
   setSidebarVisible: (v: boolean) => void;
@@ -39,6 +43,10 @@ interface UIState {
   resetZoom: () => void;
   setWindowMaximized: (v: boolean) => void;
   setWindowFocused: (v: boolean) => void;
+  setFocusedPanel: (panel: FocusedPanel) => void;
+  startSavingIndicator: () => void;
+  finishSavingIndicator: () => void;
+  resetSavingIndicator: () => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -55,6 +63,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   zoomLevel: 100,
   windowMaximized: false,
   windowFocused: true,
+  focusedPanel: null,
+  saveIndicatorState: 'idle',
 
   toggleSidebar: () => set({ sidebarVisible: !get().sidebarVisible }),
   setSidebarVisible: (v) => set({ sidebarVisible: v }),
@@ -107,4 +117,9 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   setWindowMaximized: (v) => set({ windowMaximized: v }),
   setWindowFocused: (v) => set({ windowFocused: v }),
+  setFocusedPanel: (panel) => set({ focusedPanel: panel }),
+
+  startSavingIndicator: () => set({ saveIndicatorState: 'saving' }),
+  finishSavingIndicator: () => set({ saveIndicatorState: 'saved' }),
+  resetSavingIndicator: () => set({ saveIndicatorState: 'idle' }),
 }));

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import TitleBar from './components/TitleBar';
 import ActivityBar from './components/ActivityBar';
 import Sidebar from './components/Sidebar';
@@ -8,90 +8,225 @@ import StatusBar from './components/StatusBar';
 import CommandPalette from './components/CommandPalette';
 import Notifications from './components/Notifications';
 import SettingsPanel from './components/SettingsPanel';
+import StartupOverlay from './components/StartupOverlay';
+import BuildProgressBar from './components/BuildProgressBar';
 import { useUIStore, useThemeStore, useSettingsStore, useEditorSchemeStore, useEditorStore } from './stores';
 import { useGlobalKeybindings } from './hooks/useKeybindings';
 import { useResizable } from './hooks/useResizable';
 import { loadConfig } from './services/configService';
 import { initializeCommands, saveSession, restoreSession, refreshAllOpenFiles } from './services/commandService';
 import { useSolveCounterStore } from './stores/solveCounterStore';
-import type { AppSettings } from './types';
+import { applyWarmTint, getWarmFactorForTime, interpolateColor } from './utils/color';
+import type { AppSettings, ThemeColors } from './types';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 // Initialize commands once at module load
 initializeCommands();
 
+const COLOR_KEYS: (keyof ThemeColors)[] = [
+  'bgDeepest',
+  'bgBase',
+  'bgSurface',
+  'bgElevated',
+  'bgOverlay',
+  'bgHighlight',
+  'bgActive',
+  'bgIntense',
+  'accentPrimary',
+  'accentSecondary',
+  'accentTertiary',
+  'accentGlow',
+  'accentBlue',
+  'accentGreen',
+  'accentRed',
+  'accentYellow',
+  'accentOrange',
+  'accentPurple',
+  'accentCyan',
+  'accentTeal',
+  'accentPink',
+  'textPrimary',
+  'textSecondary',
+  'textMuted',
+  'textFaint',
+  'textInverse',
+  'borderSubtle',
+  'borderDefault',
+  'borderStrong',
+  'borderAccent',
+  'scrollbarThumb',
+  'scrollbarThumbHover',
+  'scrollbarTrack',
+];
+
+const WARM_BACKGROUND_KEYS = new Set<keyof ThemeColors>([
+  'bgDeepest',
+  'bgBase',
+  'bgSurface',
+  'bgElevated',
+  'bgOverlay',
+  'bgHighlight',
+  'bgActive',
+  'bgIntense',
+]);
+
+function applyThemeToRoot(colors: ThemeColors) {
+  const root = document.documentElement;
+  root.style.setProperty('--bg-deepest', colors.bgDeepest);
+  root.style.setProperty('--bg-base', colors.bgBase);
+  root.style.setProperty('--bg-surface', colors.bgSurface);
+  root.style.setProperty('--bg-elevated', colors.bgElevated);
+  root.style.setProperty('--bg-overlay', colors.bgOverlay);
+  root.style.setProperty('--bg-highlight', colors.bgHighlight);
+  root.style.setProperty('--bg-active', colors.bgActive);
+  root.style.setProperty('--bg-intense', colors.bgIntense);
+  root.style.setProperty('--accent-primary', colors.accentPrimary);
+  root.style.setProperty('--accent-secondary', colors.accentSecondary);
+  root.style.setProperty('--accent-tertiary', colors.accentTertiary);
+  root.style.setProperty('--accent-glow', colors.accentGlow);
+  root.style.setProperty('--accent-blue', colors.accentBlue);
+  root.style.setProperty('--accent-green', colors.accentGreen);
+  root.style.setProperty('--accent-red', colors.accentRed);
+  root.style.setProperty('--accent-yellow', colors.accentYellow);
+  root.style.setProperty('--accent-orange', colors.accentOrange);
+  root.style.setProperty('--accent-purple', colors.accentPurple);
+  root.style.setProperty('--accent-cyan', colors.accentCyan);
+  root.style.setProperty('--accent-teal', colors.accentTeal);
+  root.style.setProperty('--accent-pink', colors.accentPink);
+  root.style.setProperty('--text-primary', colors.textPrimary);
+  root.style.setProperty('--text-secondary', colors.textSecondary);
+  root.style.setProperty('--text-muted', colors.textMuted);
+  root.style.setProperty('--text-faint', colors.textFaint);
+  root.style.setProperty('--text-inverse', colors.textInverse);
+  root.style.setProperty('--border-subtle', colors.borderSubtle);
+  root.style.setProperty('--border-default', colors.borderDefault);
+  root.style.setProperty('--border-strong', colors.borderStrong);
+  root.style.setProperty('--border-accent', colors.borderAccent);
+  root.style.setProperty('--scrollbar-thumb', colors.scrollbarThumb);
+  root.style.setProperty('--scrollbar-thumb-hover', colors.scrollbarThumbHover);
+  root.style.setProperty('--scrollbar-track', colors.scrollbarTrack);
+}
+
+function tintTheme(theme: ThemeColors, warmFactor: number): ThemeColors {
+  const next = { ...theme };
+  for (const key of WARM_BACKGROUND_KEYS) {
+    next[key] = applyWarmTint(theme[key], warmFactor);
+  }
+  return next;
+}
+
+function interpolateTheme(from: ThemeColors, to: ThemeColors, t: number): ThemeColors {
+  const next = { ...to };
+  for (const key of COLOR_KEYS) {
+    next[key] = interpolateColor(from[key], to[key], t);
+  }
+  return next;
+}
+
 export default function App() {
   const sidebarVisible = useUIStore((s) => s.sidebarVisible);
   const sidebarWidth = useUIStore((s) => s.sidebarWidth);
-  const setSidebarWidth = useUIStore((s) => s.setSidebarWidth);
   const bottomPanelVisible = useUIStore((s) => s.bottomPanelVisible);
   const bottomPanelHeight = useUIStore((s) => s.bottomPanelHeight);
-  const setBottomPanelHeight = useUIStore((s) => s.setBottomPanelHeight);
   const commandPaletteOpen = useUIStore((s) => s.commandPaletteOpen);
   const settingsOpen = useUIStore((s) => s.settingsOpen);
   const zoomLevel = useUIStore((s) => s.zoomLevel);
   const uiFontSize = useSettingsStore((s) => s.settings.ui.fontSize);
   const uiFontFamily = useSettingsStore((s) => s.settings.ui.fontFamily);
+  const statusBarVisible = useSettingsStore((s) => s.settings.ui.statusBarVisible);
+  const activityBarVisible = useSettingsStore((s) => s.settings.ui.activityBarVisible);
   const setTheme = useThemeStore((s) => s.setTheme);
   const currentTheme = useThemeStore((s) => s.currentTheme);
+
+  const [startupReady, setStartupReady] = useState(false);
+  const [startupVisible, setStartupVisible] = useState(true);
+  const [paletteMounted, setPaletteMounted] = useState(commandPaletteOpen);
+  const [paletteClosing, setPaletteClosing] = useState(false);
+  const [warmFactor, setWarmFactor] = useState(() => getWarmFactorForTime(new Date()));
+  const previousThemeRef = useRef<ThemeColors | null>(null);
 
   // Register global keybindings
   useGlobalKeybindings();
 
-  // Sidebar resizer — use functional updater to avoid stale closure
   const sidebarResizer = useResizable('horizontal', (delta) => {
     useUIStore.getState().setSidebarWidth(useUIStore.getState().sidebarWidth + delta);
   });
 
-  // Bottom panel resizer — use functional updater to avoid stale closure
   const panelResizer = useResizable('vertical', (delta) => {
     useUIStore.getState().setBottomPanelHeight(useUIStore.getState().bottomPanelHeight - delta);
   });
 
-  // Load settings and restore session on startup
   useEffect(() => {
-    (async () => {
-      // Load custom themes and custom editor schemes first
-      await useThemeStore.getState().loadCustomThemesFromDisk();
-      await useEditorSchemeStore.getState().loadCustomSchemesFromDisk();
+    let cancelled = false;
+    let finished = false;
+    const markReady = () => {
+      if (cancelled || finished) return;
+      finished = true;
+      setStartupReady(true);
+    };
 
+    const startupGuard = window.setTimeout(() => {
+      markReady();
+    }, 10000);
+
+    (async () => {
       try {
-        const settings = await loadConfig<AppSettings>('settings.json');
-        if (settings) {
-          useSettingsStore.getState().loadSettings(settings);
-          if (settings.ui?.zoomLevel) {
-            useUIStore.setState({ zoomLevel: settings.ui.zoomLevel });
-          }
-          if (settings.ui?.theme) {
-            setTheme(settings.ui.theme);
-          }
-          if (settings.ui?.editorColorScheme) {
-            useEditorSchemeStore.getState().setScheme(settings.ui.editorColorScheme);
-          }
-        }
-      } catch {
-        // Use defaults
+        await useThemeStore.getState().loadCustomThemesFromDisk();
+      } catch (error) {
+        console.error('Failed to load custom themes during startup:', error);
       }
 
-      // Restore previous session (open tabs, folder, UI state)
-      await restoreSession();
+      try {
+        await useEditorSchemeStore.getState().loadCustomSchemesFromDisk();
+      } catch (error) {
+        console.error('Failed to load editor schemes during startup:', error);
+      }
 
-      // Load solve counter data
-      await useSolveCounterStore.getState().loadFromDisk();
+      try {
+        try {
+          const settings = await loadConfig<AppSettings>('settings.json');
+          if (settings && !cancelled) {
+            useSettingsStore.getState().loadSettings(settings);
+            if (settings.ui?.zoomLevel) {
+              useUIStore.setState({ zoomLevel: settings.ui.zoomLevel });
+            }
+            if (settings.ui?.theme) {
+              setTheme(settings.ui.theme);
+            }
+            if (settings.ui?.editorColorScheme) {
+              useEditorSchemeStore.getState().setScheme(settings.ui.editorColorScheme);
+            }
+          }
+        } catch {
+          // defaults are already loaded
+        }
+
+        await restoreSession();
+        await useSolveCounterStore.getState().loadFromDisk();
+      } catch (error) {
+        console.error('Startup initialization failed:', error);
+      } finally {
+        window.clearTimeout(startupGuard);
+        markReady();
+      }
     })();
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(startupGuard);
+    };
   }, [setTheme]);
 
-  // Auto-save session periodically and on window close
   useEffect(() => {
     const interval = setInterval(() => {
       saveSession();
-    }, 30000); // Save every 30s
+    }, 30000);
 
     const handleBeforeUnload = () => {
       saveSession();
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
 
-    // Save session whenever layout changes (debounced) — ensures split sizes persist
     let layoutSaveTimer: ReturnType<typeof setTimeout> | null = null;
     let prevLayout = useEditorStore.getState().layout;
     const unsubLayout = useEditorStore.subscribe((state) => {
@@ -112,63 +247,64 @@ export default function App() {
     };
   }, []);
 
-  // Apply theme to DOM on mount and change
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setWarmFactor(getWarmFactorForTime(new Date()));
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     const root = document.documentElement;
-    const c = currentTheme.colors;
-    root.style.setProperty('--bg-deepest', c.bgDeepest);
-    root.style.setProperty('--bg-base', c.bgBase);
-    root.style.setProperty('--bg-surface', c.bgSurface);
-    root.style.setProperty('--bg-elevated', c.bgElevated);
-    root.style.setProperty('--bg-overlay', c.bgOverlay);
-    root.style.setProperty('--bg-highlight', c.bgHighlight);
-    root.style.setProperty('--bg-active', c.bgActive);
-    root.style.setProperty('--bg-intense', c.bgIntense);
-    root.style.setProperty('--accent-primary', c.accentPrimary);
-    root.style.setProperty('--accent-secondary', c.accentSecondary);
-    root.style.setProperty('--accent-tertiary', c.accentTertiary);
-    root.style.setProperty('--accent-glow', c.accentGlow);
-    root.style.setProperty('--accent-blue', c.accentBlue);
-    root.style.setProperty('--accent-green', c.accentGreen);
-    root.style.setProperty('--accent-red', c.accentRed);
-    root.style.setProperty('--accent-yellow', c.accentYellow);
-    root.style.setProperty('--accent-orange', c.accentOrange);
-    root.style.setProperty('--accent-purple', c.accentPurple);
-    root.style.setProperty('--accent-cyan', c.accentCyan);
-    root.style.setProperty('--accent-teal', c.accentTeal);
-    root.style.setProperty('--accent-pink', c.accentPink);
-    root.style.setProperty('--text-primary', c.textPrimary);
-    root.style.setProperty('--text-secondary', c.textSecondary);
-    root.style.setProperty('--text-muted', c.textMuted);
-    root.style.setProperty('--text-faint', c.textFaint);
-    root.style.setProperty('--text-inverse', c.textInverse);
-    root.style.setProperty('--border-subtle', c.borderSubtle);
-    root.style.setProperty('--border-default', c.borderDefault);
-    root.style.setProperty('--border-strong', c.borderStrong);
-    root.style.setProperty('--border-accent', c.borderAccent);
-    root.style.setProperty('--scrollbar-thumb', c.scrollbarThumb);
-    root.style.setProperty('--scrollbar-thumb-hover', c.scrollbarThumbHover);
-    root.style.setProperty('--scrollbar-track', c.scrollbarTrack);
-  }, [currentTheme]);
+    const target = tintTheme(currentTheme.colors, warmFactor);
+    const previous = previousThemeRef.current;
 
-  // Apply UI font size (sets root px for rem-based text scaling)
+    if (!previous) {
+      applyThemeToRoot(target);
+      previousThemeRef.current = target;
+      return;
+    }
+
+    const duration = 400;
+    const startedAt = performance.now();
+    let raf = 0;
+    root.classList.add('theme-transition-active');
+
+    const tick = (now: number) => {
+      const elapsed = now - startedAt;
+      const progress = Math.min(1, elapsed / duration);
+      const frameTheme = interpolateTheme(previous, target, progress);
+      applyThemeToRoot(frameTheme);
+      if (progress < 1) {
+        raf = window.requestAnimationFrame(tick);
+      } else {
+        previousThemeRef.current = target;
+        window.setTimeout(() => root.classList.remove('theme-transition-active'), 40);
+      }
+    };
+
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [currentTheme, warmFactor]);
+
   useEffect(() => {
     document.documentElement.style.fontSize = `${uiFontSize || 13}px`;
   }, [uiFontSize]);
 
-  // Apply zoom level (scales the entire app uniformly)
   useEffect(() => {
-    document.body.style.zoom = `${zoomLevel / 100}`;
+    const root = document.documentElement;
+    root.style.setProperty('--app-scale', `${zoomLevel / 100}`);
+    return () => {
+      root.style.setProperty('--app-scale', '1');
+    };
   }, [zoomLevel]);
 
-  // Apply UI font family
   useEffect(() => {
     if (uiFontFamily) {
       document.body.style.fontFamily = uiFontFamily;
     }
   }, [uiFontFamily]);
 
-  // Prevent browser/webview native zoom so our keybindings work
   useEffect(() => {
     const preventNativeZoom = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+' || e.key === '-' || e.key === '0')) {
@@ -188,7 +324,28 @@ export default function App() {
     };
   }, []);
 
-  // Refresh open files when window regains focus (detects external file changes)
+  useEffect(() => {
+    let toggling = false;
+    const handleEscapeFullscreen = async (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || toggling) return;
+      const win = getCurrentWindow();
+      const isFullscreen = await win.isFullscreen();
+      if (!isFullscreen) return;
+      toggling = true;
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        await win.setFullscreen(false);
+      } finally {
+        toggling = false;
+      }
+    };
+    window.addEventListener('keydown', handleEscapeFullscreen, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', handleEscapeFullscreen, { capture: true });
+    };
+  }, []);
+
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const handleFocus = () => {
@@ -204,38 +361,69 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (commandPaletteOpen) {
+      setPaletteMounted(true);
+      setPaletteClosing(false);
+      return;
+    }
+    if (!paletteMounted) return;
+    setPaletteClosing(true);
+    const timer = window.setTimeout(() => {
+      setPaletteMounted(false);
+      setPaletteClosing(false);
+    }, 160);
+    return () => window.clearTimeout(timer);
+  }, [commandPaletteOpen, paletteMounted]);
+
+  const sidebarShellStyle = useMemo(
+    () => ({ width: `${sidebarVisible ? sidebarWidth : 0}px` }),
+    [sidebarVisible, sidebarWidth]
+  );
+
+  const bottomShellStyle = useMemo(
+    () => ({ height: `${bottomPanelVisible ? bottomPanelHeight + 3 : 0}px` }),
+    [bottomPanelHeight, bottomPanelVisible]
+  );
+
   return (
-    <div className="app-container">
-      <TitleBar />
-      <div className="app-main">
-        <ActivityBar />
-        {sidebarVisible && (
-          <>
+    <div className={`app-shell ${startupVisible ? 'startup-active' : 'startup-complete'}`}>
+      <div className="app-container">
+        <BuildProgressBar />
+        <TitleBar />
+        <div className="app-main">
+          {activityBarVisible ? <ActivityBar /> : null}
+          <div className={`app-sidebar-shell ${sidebarVisible ? 'open' : 'closed'}`} style={sidebarShellStyle}>
             <Sidebar style={{ width: sidebarWidth }} />
-            <div className="resizer horizontal" onMouseDown={sidebarResizer.onMouseDown} />
-          </>
-        )}
-        <div className="app-content">
-          {settingsOpen ? (
-            <SettingsPanel />
-          ) : (
-            <>
-              <div className="app-editor-area">
-                <EditorArea />
-              </div>
-              {bottomPanelVisible && (
-                <>
-                  <div className="resizer vertical" onMouseDown={panelResizer.onMouseDown} />
+          </div>
+          <div
+            className={`resizer horizontal ${sidebarVisible ? '' : 'hidden'}`}
+            onMouseDown={sidebarVisible ? sidebarResizer.onMouseDown : undefined}
+          />
+          <div className="app-content">
+            {settingsOpen ? (
+              <SettingsPanel />
+            ) : (
+              <>
+                <div className="app-editor-area">
+                  <EditorArea />
+                </div>
+                <div className={`app-bottom-shell ${bottomPanelVisible ? 'open' : 'closed'}`} style={bottomShellStyle}>
+                  <div
+                    className={`resizer vertical ${bottomPanelVisible ? '' : 'hidden'}`}
+                    onMouseDown={bottomPanelVisible ? panelResizer.onMouseDown : undefined}
+                  />
                   <BottomPanel style={{ height: bottomPanelHeight }} />
-                </>
-              )}
-            </>
-          )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
+        {statusBarVisible ? <StatusBar /> : null}
+        {paletteMounted ? <CommandPalette closing={paletteClosing} /> : null}
+        <Notifications />
       </div>
-      <StatusBar />
-      {commandPaletteOpen && <CommandPalette />}
-      <Notifications />
+      {startupVisible ? <StartupOverlay ready={startupReady} onFinished={() => setStartupVisible(false)} /> : null}
     </div>
   );
 }

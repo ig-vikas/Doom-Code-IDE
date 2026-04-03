@@ -10,6 +10,8 @@ interface SidebarProps {
 
 export default function Sidebar({ style }: SidebarProps) {
   const sidebarView = useUIStore((s) => s.sidebarView);
+  const focusedPanel = useUIStore((s) => s.focusedPanel);
+  const setFocusedPanel = useUIStore((s) => s.setFocusedPanel);
 
   const getTitle = useCallback(() => {
     switch (sidebarView) {
@@ -27,14 +29,24 @@ export default function Sidebar({ style }: SidebarProps) {
   }, [sidebarView]);
 
   return (
-    <div className="sidebar" style={style}>
+    <div
+      className={`sidebar ${focusedPanel === 'sidebar' ? 'focused' : ''}`}
+      style={style}
+      onMouseDown={() => setFocusedPanel('sidebar')}
+    >
       <div className="sidebar-header">
         <span>{getTitle()}</span>
       </div>
       <div className="sidebar-content">
-        {sidebarView === 'explorer' && <FileExplorer />}
-        {sidebarView === 'search' && <SearchPanel />}
-        {sidebarView === 'snippets' && <SnippetsPanel />}
+        <div className={`sidebar-view-panel ${sidebarView === 'explorer' ? 'active' : ''}`}>
+          <FileExplorer />
+        </div>
+        <div className={`sidebar-view-panel ${sidebarView === 'search' ? 'active' : ''}`}>
+          <SearchPanel />
+        </div>
+        <div className={`sidebar-view-panel ${sidebarView === 'snippets' ? 'active' : ''}`}>
+          <SnippetsPanel />
+        </div>
       </div>
     </div>
   );

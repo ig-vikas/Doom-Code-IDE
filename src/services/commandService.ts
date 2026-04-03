@@ -86,6 +86,13 @@ function getActiveGroupAndTab() {
   return { group, tab };
 }
 
+function countDiagnostics(stderr: string | undefined | null): { warnings: number; errors: number } {
+  const text = stderr ?? '';
+  const warnings = (text.match(/\bwarning\b\s*:/gi) ?? []).length;
+  const errors = (text.match(/\berror\b\s*:/gi) ?? []).length;
+  return { warnings, errors };
+}
+
 const CP_TEMPLATE = `#include <bits/stdc++.h>
 using namespace std;
 
@@ -213,10 +220,13 @@ export function initializeCommands() {
 
     if (tab.path) {
       try {
+        useUIStore.getState().startSavingIndicator();
         await writeFileContent(tab.path, tab.content);
         useEditorStore.getState().markSaved(tab.path);
+        useUIStore.getState().finishSavingIndicator();
         useNotificationStore.getState().success('File saved');
       } catch (err) {
+        useUIStore.getState().resetSavingIndicator();
         useNotificationStore.getState().error('Failed to save file');
       }
     } else {
@@ -236,11 +246,14 @@ export function initializeCommands() {
         defaultPath: tab.name,
       });
       if (filePath) {
+        useUIStore.getState().startSavingIndicator();
         await writeFileContent(filePath, tab.content);
         useEditorStore.getState().markTabSaved(group.id, tab.id, filePath);
+        useUIStore.getState().finishSavingIndicator();
         useNotificationStore.getState().success('File saved as ' + getFileName(filePath));
       }
     } catch (err) {
+      useUIStore.getState().resetSavingIndicator();
       useNotificationStore.getState().error('Failed to save file');
     }
   });
@@ -249,10 +262,15 @@ export function initializeCommands() {
     const state = useEditorStore.getState();
     const groups = getAllLeaves(state.layout);
     let saved = 0;
+    let started = false;
     for (const g of groups) {
       for (const tab of g.tabs) {
         if (tab.isModified && tab.path) {
           try {
+            if (!started) {
+              started = true;
+              useUIStore.getState().startSavingIndicator();
+            }
             await writeFileContent(tab.path, tab.content);
             useEditorStore.getState().markSaved(tab.path);
             saved++;
@@ -261,7 +279,10 @@ export function initializeCommands() {
       }
     }
     if (saved > 0) {
+      useUIStore.getState().finishSavingIndicator();
       useNotificationStore.getState().success(`Saved ${saved} file${saved > 1 ? 's' : ''}`);
+    } else {
+      useUIStore.getState().resetSavingIndicator();
     }
   });
 
@@ -502,6 +523,7 @@ export function initializeCommands() {
       await killRunningProcess();
       useBuildStore.getState().setRunning(false);
       useBuildStore.getState().setCompiling(false);
+      useBuildStore.getState().setBuildVisualState('idle');
       useNotificationStore.getState().info('Process killed');
     } catch {}
   });
@@ -558,6 +580,8 @@ export function initializeCommands() {
 // Build using active profile flags and compiler settings
 async function doBuildAndRun(autoRun: boolean) {
   useBuildStore.getState().setKilled(false);
+  useBuildStore.getState().setBuildVisualState('running');
+  useBuildStore.getState().setDiagnostics(0, 0);
   const editorState = useEditorStore.getState();
   const buildState = useBuildStore.getState();
   const notify = useNotificationStore.getState();
@@ -568,6 +592,7 @@ async function doBuildAndRun(autoRun: boolean) {
 
   const group = findLeaf(editorState.layout, editorState.activeGroupId);
   if (!group || group.type !== 'leaf' || !group.activeTabId) {
+    useBuildStore.getState().pulseBuildVisualState('failure');
     notify.error('No active file to compile');
     return;
   }
@@ -577,12 +602,17 @@ async function doBuildAndRun(autoRun: boolean) {
   // Auto-save before build
   if (tab.path && tab.isModified) {
     try {
+      useUIStore.getState().startSavingIndicator();
       await writeFileContent(tab.path, tab.content);
       useEditorStore.getState().markSaved(tab.path);
-    } catch {}
+      useUIStore.getState().finishSavingIndicator();
+    } catch {
+      useUIStore.getState().resetSavingIndicator();
+    }
   }
 
   if (!tab.path) {
+    useBuildStore.getState().pulseBuildVisualState('failure');
     notify.error('Save the file first before building');
     executeCommand('file.saveAs');
     return;
@@ -594,6 +624,7 @@ async function doBuildAndRun(autoRun: boolean) {
   const baseName = fileName.replace(/\.[^.]+$/, '');
   const ext = getFileExtension(fileName).toLowerCase();
   if (!['cpp', 'cc', 'cxx', 'c', 'h', 'hpp'].includes(ext)) {
+    useBuildStore.getState().pulseBuildVisualState('failure');
     notify.error(`Cannot compile .${ext} file — only C/C++ files are supported`);
     return;
   }
@@ -610,8 +641,14 @@ async function doBuildAndRun(autoRun: boolean) {
 
   try {
     const compileResult = await compileCpp(sourcePath, exePath, profile.flags);
+    const diagnostics = countDiagnostics(compileResult.stderr);
+    useBuildStore.getState().setDiagnostics(
+      diagnostics.warnings,
+      compileResult.success ? diagnostics.errors : Math.max(1, diagnostics.errors)
+    );
     if (!compileResult.success) {
       useBuildStore.getState().setCompiling(false);
+      useBuildStore.getState().pulseBuildVisualState('failure');
       notify.error('Compilation failed');
       emitTerminalOutput(`\x1b[31m✗ Compilation failed\x1b[0m\r\n`);
       if (compileResult.stderr) emitTerminalOutput(compileResult.stderr.replace(/\n/g, '\r\n'));
@@ -621,6 +658,8 @@ async function doBuildAndRun(autoRun: boolean) {
     emitTerminalOutput(`\x1b[32m✓ Compiled successfully (${compileResult.durationMs}ms)\x1b[0m\r\n`);
   } catch (err) {
     useBuildStore.getState().setCompiling(false);
+    useBuildStore.getState().setDiagnostics(0, 1);
+    useBuildStore.getState().pulseBuildVisualState('failure');
     notify.error('Compile failed: ' + String(err));
     emitTerminalOutput(`\x1b[31mError: ${String(err)}\x1b[0m\r\n\r\n`);
     return;
@@ -628,6 +667,7 @@ async function doBuildAndRun(autoRun: boolean) {
 
   if (!autoRun) {
     useBuildStore.getState().setCompiling(false);
+    useBuildStore.getState().pulseBuildVisualState('success');
     notify.success('Compilation successful');
     emitTerminalOutput('\r\n');
     return;
@@ -645,6 +685,7 @@ async function doBuildAndRun(autoRun: boolean) {
     if (testCases.length === 0) {
       notify.info('No test cases — add them in the Test Cases panel');
       useBuildStore.getState().setRunning(false);
+      useBuildStore.getState().setBuildVisualState('idle');
       return;
     }
 
@@ -685,7 +726,10 @@ async function doBuildAndRun(autoRun: boolean) {
 
     useBuildStore.getState().setRunning(false);
     if (!useBuildStore.getState().killed) {
+      useBuildStore.getState().pulseBuildVisualState('success');
       notify.success('Test run completed');
+    } else {
+      useBuildStore.getState().setBuildVisualState('idle');
     }
     emitTerminalOutput('\r\n');
     // Refresh open files after test runs
@@ -701,6 +745,7 @@ async function doBuildAndRun(autoRun: boolean) {
     if (!customCmd) {
       notify.error('No custom command configured for this profile');
       useBuildStore.getState().setRunning(false);
+      useBuildStore.getState().pulseBuildVisualState('failure');
       return;
     }
 
@@ -711,12 +756,15 @@ async function doBuildAndRun(autoRun: boolean) {
       useBuildStore.getState().setRunning(false);
 
       if (useBuildStore.getState().killed) {
+        useBuildStore.getState().setBuildVisualState('idle');
         emitTerminalOutput('\r\n');
       } else if (result.success) {
+        useBuildStore.getState().pulseBuildVisualState('success');
         notify.success('Custom command completed');
         emitTerminalOutput(`\x1b[32m✓ Command completed\x1b[0m\r\n`);
         if (result.stdout) emitTerminalOutput(result.stdout.replace(/\n/g, '\r\n'));
       } else {
+        useBuildStore.getState().pulseBuildVisualState('failure');
         notify.error('Custom command failed');
         emitTerminalOutput(`\x1b[31m✗ Command failed\x1b[0m\r\n`);
         if (result.stderr) emitTerminalOutput(result.stderr.replace(/\n/g, '\r\n'));
@@ -727,8 +775,11 @@ async function doBuildAndRun(autoRun: boolean) {
     } catch (err) {
       useBuildStore.getState().setRunning(false);
       if (!useBuildStore.getState().killed) {
+        useBuildStore.getState().pulseBuildVisualState('failure');
         notify.error('Custom command failed: ' + String(err));
         emitTerminalOutput(`\x1b[31mError: ${String(err)}\x1b[0m\r\n\r\n`);
+      } else {
+        useBuildStore.getState().setBuildVisualState('idle');
       }
     }
   } else {
@@ -741,14 +792,17 @@ async function doBuildAndRun(autoRun: boolean) {
       useBuildStore.getState().setRunning(false);
 
       if (useBuildStore.getState().killed) {
+        useBuildStore.getState().setBuildVisualState('idle');
         emitTerminalOutput('\r\n');
       } else if (result.success) {
+        useBuildStore.getState().pulseBuildVisualState('success');
         notify.success('Run completed — output written to output.txt');
         emitTerminalOutput(`\x1b[32m✓ Run completed — see output.txt\x1b[0m\r\n`);
 
         // Refresh all open files — picks up output.txt and any other externally changed files
         await refreshAllOpenFiles();
       } else {
+        useBuildStore.getState().pulseBuildVisualState('failure');
         notify.error('Run failed');
         emitTerminalOutput(`\x1b[31m✗ Run failed\x1b[0m\r\n`);
         if (result.stderr) emitTerminalOutput(result.stderr.replace(/\n/g, '\r\n'));
@@ -758,8 +812,11 @@ async function doBuildAndRun(autoRun: boolean) {
     } catch (err) {
       useBuildStore.getState().setRunning(false);
       if (!useBuildStore.getState().killed) {
+        useBuildStore.getState().pulseBuildVisualState('failure');
         notify.error('Run failed: ' + String(err));
         emitTerminalOutput(`\x1b[31mError: ${String(err)}\x1b[0m\r\n\r\n`);
+      } else {
+        useBuildStore.getState().setBuildVisualState('idle');
       }
     }
   }
@@ -768,6 +825,8 @@ async function doBuildAndRun(autoRun: boolean) {
 async function doBuildAndRunSingleTest(index: number) {
   // For single test case, compile then run just that one
   useBuildStore.getState().setKilled(false);
+  useBuildStore.getState().setBuildVisualState('running');
+  useBuildStore.getState().setDiagnostics(0, 0);
   const editorState = useEditorStore.getState();
   const buildState = useBuildStore.getState();
   const notify = useNotificationStore.getState();
@@ -776,17 +835,25 @@ async function doBuildAndRunSingleTest(index: number) {
 
   const group = findLeaf(editorState.layout, editorState.activeGroupId);
   if (!group || group.type !== 'leaf' || !group.activeTabId) {
+    useBuildStore.getState().pulseBuildVisualState('failure');
     notify.error('No active file to compile');
     return;
   }
   const tab = group.tabs.find((t: any) => t.id === group.activeTabId);
-  if (!tab?.path) return;
+  if (!tab?.path) {
+    useBuildStore.getState().pulseBuildVisualState('failure');
+    return;
+  }
 
   if (tab.isModified) {
     try {
+      useUIStore.getState().startSavingIndicator();
       await writeFileContent(tab.path, tab.content);
       useEditorStore.getState().markSaved(tab.path);
-    } catch {}
+      useUIStore.getState().finishSavingIndicator();
+    } catch {
+      useUIStore.getState().resetSavingIndicator();
+    }
   }
 
   const sourcePath = tab.path.replace(/\//g, '\\');
@@ -795,6 +862,7 @@ async function doBuildAndRunSingleTest(index: number) {
   const baseName = fileName.replace(/\.[^.]+$/, '');
   const ext = getFileExtension(fileName).toLowerCase();
   if (!['cpp', 'cc', 'cxx', 'c', 'h', 'hpp'].includes(ext)) {
+    useBuildStore.getState().pulseBuildVisualState('failure');
     notify.error(`Cannot compile .${ext} file — only C/C++ files are supported`);
     return;
   }
@@ -802,7 +870,10 @@ async function doBuildAndRunSingleTest(index: number) {
 
   const testCases = buildState.testCases;
   const tc = testCases[index];
-  if (!tc) return;
+  if (!tc) {
+    useBuildStore.getState().setBuildVisualState('idle');
+    return;
+  }
 
   useBuildStore.getState().setCompiling(true);
   ui.setBottomPanelVisible(true);
@@ -811,8 +882,14 @@ async function doBuildAndRunSingleTest(index: number) {
 
   try {
     const compileResult = await compileCpp(sourcePath, exePath, profile.flags);
+    const diagnostics = countDiagnostics(compileResult.stderr);
+    useBuildStore.getState().setDiagnostics(
+      diagnostics.warnings,
+      compileResult.success ? diagnostics.errors : Math.max(1, diagnostics.errors)
+    );
     useBuildStore.getState().setCompiling(false);
     if (!compileResult.success) {
+      useBuildStore.getState().pulseBuildVisualState('failure');
       notify.error('Compilation failed');
       emitTerminalOutput(`\x1b[31m✗ Compilation failed\x1b[0m\r\n`);
       if (compileResult.stderr) emitTerminalOutput(compileResult.stderr.replace(/\n/g, '\r\n'));
@@ -820,6 +897,8 @@ async function doBuildAndRunSingleTest(index: number) {
     }
   } catch (err) {
     useBuildStore.getState().setCompiling(false);
+    useBuildStore.getState().setDiagnostics(0, 1);
+    useBuildStore.getState().pulseBuildVisualState('failure');
     notify.error('Compile failed: ' + String(err));
     return;
   }
@@ -838,13 +917,21 @@ async function doBuildAndRunSingleTest(index: number) {
       else verdict = 'accepted';
 
       useBuildStore.getState().setTestVerdict(tc.id, verdict, result.stdout, result.durationMs);
+      if (verdict === 'accepted') {
+        useBuildStore.getState().pulseBuildVisualState('success');
+      } else {
+        useBuildStore.getState().pulseBuildVisualState('failure');
+      }
       const color = verdict === 'accepted' ? '32' : verdict === 'wrong-answer' ? '31' : verdict === 'time-limit-exceeded' ? '33' : '35';
       emitTerminalOutput(`\x1b[${color}m  ${tc.name}: ${verdict.toUpperCase()} (${result.durationMs}ms)\x1b[0m\r\n\r\n`);
     }
   } catch (err) {
     if (!useBuildStore.getState().killed) {
       useBuildStore.getState().setTestVerdict(tc.id, 'runtime-error', String(err));
+      useBuildStore.getState().pulseBuildVisualState('failure');
       emitTerminalOutput(`\x1b[31m  ${tc.name}: ERROR — ${String(err)}\x1b[0m\r\n\r\n`);
+    } else {
+      useBuildStore.getState().setBuildVisualState('idle');
     }
   }
   useBuildStore.getState().setRunning(false);

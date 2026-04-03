@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { useUIStore } from '../stores';
 import type { SidebarView } from '../stores/uiStore';
 import {
@@ -18,15 +19,46 @@ export default function ActivityBar() {
   const sidebarVisible = useUIStore((s) => s.sidebarVisible);
   const setSidebarView = useUIStore((s) => s.setSidebarView);
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
+  const setFocusedPanel = useUIStore((s) => s.setFocusedPanel);
+  const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [indicator, setIndicator] = useState({ y: 0, h: 12, visible: false });
+
+  useEffect(() => {
+    const idx = activityItems.findIndex((item) => item.id === sidebarView);
+    const btn = buttonRefs.current[idx];
+    if (!sidebarVisible || !btn) {
+      setIndicator((prev) => ({ ...prev, visible: false }));
+      return;
+    }
+
+    setIndicator({
+      y: btn.offsetTop + btn.offsetHeight * 0.25,
+      h: btn.offsetHeight * 0.5,
+      visible: true,
+    });
+  }, [sidebarView, sidebarVisible]);
 
   return (
     <div className="activity-bar">
       <div className="activity-bar-top">
-        {activityItems.map((item) => (
+        <div
+          className={`activity-indicator ${indicator.visible ? 'visible' : ''}`}
+          style={{
+            transform: `translateY(${indicator.y}px)`,
+            height: `${indicator.h}px`,
+          }}
+        />
+        {activityItems.map((item, idx) => (
           <button
             key={item.id}
+            ref={(el) => {
+              buttonRefs.current[idx] = el;
+            }}
             className={`activity-btn ${sidebarVisible && sidebarView === item.id ? 'active' : ''}`}
-            onClick={() => setSidebarView(item.id)}
+            onClick={() => {
+              setSidebarView(item.id);
+              setFocusedPanel('sidebar');
+            }}
             data-tooltip={item.tooltip}
           >
             {item.icon}
@@ -36,7 +68,10 @@ export default function ActivityBar() {
       <div className="activity-bar-bottom">
         <button
           className="activity-btn"
-          onClick={() => setSettingsOpen(true)}
+          onClick={() => {
+            setFocusedPanel('sidebar');
+            setSettingsOpen(true);
+          }}
           data-tooltip="Settings"
         >
           <VscSettingsGear />

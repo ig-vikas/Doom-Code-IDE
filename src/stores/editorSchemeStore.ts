@@ -1,16 +1,6 @@
 import { create } from 'zustand';
 import type { EditorColorScheme } from '../types/editorScheme';
-import { allEditorSchemes, vscodeDarkPlus } from '../editorSchemes';
-import {
-  loadCustomSchemes,
-  saveCustomScheme,
-  removeCustomSchemeFromDisk,
-} from '../services/customSchemeService';
-
-let idCounter = 0;
-function generateId(): string {
-  return `${Date.now()}-${++idCounter}`;
-}
+import { vscodeDarkPlus } from '../editorSchemes';
 
 interface EditorSchemeState {
   currentScheme: EditorColorScheme;
@@ -24,74 +14,57 @@ interface EditorSchemeState {
   loadCustomSchemesFromDisk: () => Promise<void>;
 }
 
+const exclusiveScheme = vscodeDarkPlus;
+const builtInSchemes: EditorColorScheme[] = [exclusiveScheme];
+
 export const useEditorSchemeStore = create<EditorSchemeState>((set, get) => ({
   currentScheme: vscodeDarkPlus,
-  schemes: allEditorSchemes,
+  schemes: builtInSchemes,
   customSchemes: [],
 
   setScheme: (id) => {
-    const scheme = get().schemes.find((s) => s.id === id);
-    if (scheme) {
-      set({ currentScheme: scheme });
+    if (id === exclusiveScheme.id) {
+      set({ currentScheme: exclusiveScheme });
+      return;
     }
+    // Editor scheme is intentionally locked to Dark+ (VS Code).
+    set({ currentScheme: exclusiveScheme });
   },
 
-  addCustomScheme: (scheme) => {
-    const customSchemes = [...get().customSchemes, scheme];
+  addCustomScheme: (_scheme) => {
     set({
-      customSchemes,
-      schemes: [...allEditorSchemes, ...customSchemes],
+      currentScheme: exclusiveScheme,
+      schemes: builtInSchemes,
+      customSchemes: [],
     });
-    saveCustomScheme(scheme).catch(() => {});
   },
 
-  updateCustomScheme: (scheme) => {
-    const customSchemes = get().customSchemes.map((s) =>
-      s.id === scheme.id ? scheme : s
-    );
-    const current = get().currentScheme;
+  updateCustomScheme: (_scheme) => {
     set({
-      customSchemes,
-      schemes: [...allEditorSchemes, ...customSchemes],
-      ...(current.id === scheme.id ? { currentScheme: scheme } : {}),
+      currentScheme: exclusiveScheme,
+      schemes: builtInSchemes,
+      customSchemes: [],
     });
-    saveCustomScheme(scheme).catch(() => {});
   },
 
-  removeCustomScheme: (id) => {
-    const customSchemes = get().customSchemes.filter((s) => s.id !== id);
-    const current = get().currentScheme;
+  removeCustomScheme: (_id) => {
     set({
-      customSchemes,
-      schemes: [...allEditorSchemes, ...customSchemes],
-      ...(current.id === id ? { currentScheme: vscodeDarkPlus } : {}),
+      currentScheme: exclusiveScheme,
+      schemes: builtInSchemes,
+      customSchemes: [],
     });
-    removeCustomSchemeFromDisk(id).catch(() => {});
   },
 
-  duplicateScheme: (id) => {
-    const source = get().schemes.find((s) => s.id === id);
-    if (!source) return null;
-    const newId = `custom-scheme-${generateId()}`;
-    const clone: EditorColorScheme = {
-      ...source,
-      id: newId,
-      name: `${source.name} (Copy)`,
-      monacoTheme: {
-        ...source.monacoTheme,
-        rules: [...source.monacoTheme.rules],
-        colors: { ...source.monacoTheme.colors },
-      },
-    };
-    get().addCustomScheme(clone);
-    return newId;
+  duplicateScheme: (_id) => {
+    // Custom editor schemes are disabled.
+    return null;
   },
 
   loadCustomSchemesFromDisk: async () => {
-    const customSchemes = await loadCustomSchemes();
     set({
-      customSchemes,
-      schemes: [...allEditorSchemes, ...customSchemes],
+      currentScheme: exclusiveScheme,
+      schemes: builtInSchemes,
+      customSchemes: [],
     });
   },
 }));

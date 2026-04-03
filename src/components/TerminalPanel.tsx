@@ -19,13 +19,16 @@ export default function TerminalPanel() {
     const term = new Terminal({
       fontSize: terminalSettings.fontSize,
       fontFamily: terminalSettings.fontFamily,
+      lineHeight: terminalSettings.lineHeight,
       theme: {
         background: colors.bgDeepest,
         foreground: colors.textPrimary,
         cursor: colors.accentPrimary,
         selectionBackground: colors.bgHighlight,
       },
-      cursorBlink: true,
+      cursorBlink: terminalSettings.cursorBlink,
+      cursorStyle: terminalSettings.cursorStyle,
+      scrollback: terminalSettings.scrollback,
       allowProposedApi: true,
     });
 
@@ -87,11 +90,15 @@ export default function TerminalPanel() {
     if (termRef.current) {
       termRef.current.options.fontSize = terminalSettings.fontSize;
       termRef.current.options.fontFamily = terminalSettings.fontFamily;
+      termRef.current.options.lineHeight = terminalSettings.lineHeight;
+      termRef.current.options.cursorBlink = terminalSettings.cursorBlink;
+      termRef.current.options.cursorStyle = terminalSettings.cursorStyle;
+      termRef.current.options.scrollback = terminalSettings.scrollback;
       try {
         fitAddonRef.current?.fit();
       } catch {}
     }
-  }, [terminalSettings.fontSize, terminalSettings.fontFamily]);
+  }, [terminalSettings.cursorBlink, terminalSettings.cursorStyle, terminalSettings.fontFamily, terminalSettings.fontSize, terminalSettings.lineHeight, terminalSettings.scrollback]);
 
   return <div ref={containerRef} className="terminal-container" />;
 }

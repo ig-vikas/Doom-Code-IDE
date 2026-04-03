@@ -41,6 +41,10 @@ interface BuildState {
   compilerPath: string;
   compiling: boolean;
   running: boolean;
+  buildVisualState: 'idle' | 'running' | 'success' | 'failure';
+  buildVisualToken: number;
+  warningCount: number;
+  errorCount: number;
   killed: boolean;
   compileResult: CompileResult | null;
   runResult: RunResult | null;
@@ -54,6 +58,9 @@ interface BuildState {
   setCompilerPath: (path: string) => void;
   setCompiling: (v: boolean) => void;
   setRunning: (v: boolean) => void;
+  setBuildVisualState: (state: 'idle' | 'running' | 'success' | 'failure') => void;
+  pulseBuildVisualState: (state: 'success' | 'failure') => void;
+  setDiagnostics: (warningCount: number, errorCount: number) => void;
   setKilled: (v: boolean) => void;
   setCompileResult: (r: CompileResult | null) => void;
   setRunResult: (r: RunResult | null) => void;
@@ -85,6 +92,10 @@ export const useBuildStore = create<BuildState>((set, get) => ({
   compilerPath: 'g++',
   compiling: false,
   running: false,
+  buildVisualState: 'idle',
+  buildVisualToken: 0,
+  warningCount: 0,
+  errorCount: 0,
   killed: false,
   compileResult: null,
   runResult: null,
@@ -115,6 +126,13 @@ export const useBuildStore = create<BuildState>((set, get) => ({
 
   setCompiling: (v) => set({ compiling: v }),
   setRunning: (v) => set({ running: v }),
+  setBuildVisualState: (state) => set({ buildVisualState: state }),
+  pulseBuildVisualState: (state) =>
+    set((s) => ({
+      buildVisualState: state,
+      buildVisualToken: s.buildVisualToken + 1,
+    })),
+  setDiagnostics: (warningCount, errorCount) => set({ warningCount, errorCount }),
   setKilled: (v) => set({ killed: v }),
   setCompileResult: (r) => set({ compileResult: r }),
   setRunResult: (r) => set({ runResult: r }),

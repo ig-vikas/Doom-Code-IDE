@@ -1,7 +1,7 @@
 import { useCallback, useRef, useEffect, useState } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
-import { useEditorStore, useThemeStore, useSettingsStore, useEditorSchemeStore } from '../stores';
+import { useEditorStore, useThemeStore, useSettingsStore, useEditorSchemeStore, useUIStore } from '../stores';
 import { useAutoSave } from '../hooks/useAutoSave';
 import { writeFileContent } from '../services/fileService';
 import { useNotificationStore } from '../stores';
@@ -184,15 +184,24 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
   const currentTheme = useThemeStore((s) => s.currentTheme);
   const currentScheme = useEditorSchemeStore((s) => s.currentScheme);
   const settings = useSettingsStore((s) => s.settings);
+  const focusedPanel = useUIStore((s) => s.focusedPanel);
+  const setFocusedPanel = useUIStore((s) => s.setFocusedPanel);
   const success = useNotificationStore((s) => s.success);
   const error = useNotificationStore((s) => s.error);
   const { triggerAutoSave } = useAutoSave();
   const [isDragOver, setIsDragOver] = useState(false);
   const isTabDragActive = useGlobalDragActive();
+  const [editorSwitching, setEditorSwitching] = useState(false);
+  const [typingStreak, setTypingStreak] = useState(0);
+  const [typingStreakVisible, setTypingStreakVisible] = useState(false);
 
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof import('monaco-editor') | null>(null);
   const lastLocalContentRef = useRef<string | null>(null);
+  const previousActiveTabRef = useRef<string | null>(activeTabId);
+  const streakRef = useRef(0);
+  const streakPauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const streakCooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
 
@@ -222,11 +231,70 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
     [getTabViewState]
   );
 
+  const stopStreakCooldown = useCallback(() => {
+    if (streakCooldownRef.current) {
+      clearInterval(streakCooldownRef.current);
+      streakCooldownRef.current = null;
+    }
+  }, []);
+
+  const scheduleStreakDecay = useCallback(() => {
+    if (streakPauseTimerRef.current) {
+      clearTimeout(streakPauseTimerRef.current);
+    }
+    streakPauseTimerRef.current = setTimeout(() => {
+      stopStreakCooldown();
+      const steps = 12;
+      const start = streakRef.current;
+      if (start <= 0) {
+        setTypingStreakVisible(false);
+        return;
+      }
+      let step = 0;
+      streakCooldownRef.current = setInterval(() => {
+        step += 1;
+        const next = Math.max(0, Math.round(start * (1 - step / steps)));
+        streakRef.current = next;
+        setTypingStreak(next);
+        if (step >= steps || next <= 0) {
+          stopStreakCooldown();
+          setTypingStreakVisible(false);
+        }
+      }, 42);
+    }, 2000);
+  }, [stopStreakCooldown]);
+
+  const insertSnippetIntoEditor = useCallback((text: string) => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    ed.focus();
+    const selection = ed.getSelection();
+    if (!selection) return;
+
+    const processedText = text.replace(/\$\{1:TIMESTAMP\}/g, formatTimestamp());
+    const contribution = ed.getContribution('snippetController2') as any;
+    if (contribution) {
+      contribution.insert(processedText);
+      return;
+    }
+
+    ed.executeEdits('snippet', [{
+      range: selection,
+      text: processedText.replace(/\$\{\d+(?::([^}]*))?\}/g, '$1').replace(/\$\d+/g, ''),
+      forceMoveMarkers: true,
+    }]);
+  }, []);
+
   const handleFocus = useCallback(() => {
+    setFocusedPanel('editor');
     if (groupId !== activeGroupId) {
       setActiveGroup(groupId);
     }
-  }, [groupId, activeGroupId, setActiveGroup]);
+    if (editorRef.current && monacoRef.current) {
+      setActiveEditor(editorRef.current, monacoRef.current);
+      setInsertSnippetFn(insertSnippetIntoEditor);
+    }
+  }, [activeGroupId, groupId, insertSnippetIntoEditor, setActiveGroup, setFocusedPanel, setInsertSnippetFn]);
 
   // Drop zone on the entire editor group
   const handleGroupDragOver = useCallback((e: React.DragEvent) => {
@@ -265,9 +333,6 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
       editorRef.current = editor;
       monacoRef.current = monaco;
 
-      // Set as active editor for command service
-      setActiveEditor(editor, monaco);
-
       // Register editor color scheme
       try {
         monaco.editor.defineTheme(currentScheme.id, currentScheme.monacoTheme as editor.IStandaloneThemeData);
@@ -302,39 +367,23 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
         });
       }
 
-      // Wire up snippet insertion from sidebar panel
-      setInsertSnippetFn((text: string) => {
-        const ed = editorRef.current;
-        const mon = monacoRef.current;
-        if (ed && mon) {
-          ed.focus();
-          const selection = ed.getSelection();
-          if (selection) {
-            // Replace TIMESTAMP placeholder and insert as snippet
-            const processedText = text.replace(/\$\{1:TIMESTAMP\}/g, formatTimestamp());
-            const contribution = ed.getContribution('snippetController2') as any;
-            if (contribution) {
-              contribution.insert(processedText);
-            } else {
-              ed.executeEdits('snippet', [{
-                range: selection,
-                text: processedText.replace(/\$\{\d+(?::([^}]*))?\}/g, '$1').replace(/\$\d+/g, ''),
-                forceMoveMarkers: true,
-              }]);
-            }
-          }
-        }
-      });
+      if (groupId === activeGroupId) {
+        setActiveEditor(editor, monaco);
+        setInsertSnippetFn(insertSnippetIntoEditor);
+      }
 
       // Ctrl+S save
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
         if (activeTab?.path) {
           try {
+            useUIStore.getState().startSavingIndicator();
             const content = editor.getValue();
             await writeFileContent(activeTab.path, content);
             markSaved(activeTab.path);
+            useUIStore.getState().finishSavingIndicator();
             success('File saved');
           } catch (err) {
+            useUIStore.getState().resetSavingIndicator();
             error('Failed to save file');
           }
         }
@@ -342,7 +391,6 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
 
       editor.onDidFocusEditorText(() => {
         handleFocus();
-        setActiveEditor(editor, monaco);
       });
 
       // Track cursor position for status bar and store
@@ -359,6 +407,18 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
         }
       });
 
+      editor.onDidChangeModelContent((e) => {
+        if (!e.changes || e.changes.length === 0) return;
+        if (streakCooldownRef.current) {
+          clearInterval(streakCooldownRef.current);
+          streakCooldownRef.current = null;
+        }
+        streakRef.current += 1;
+        setTypingStreak(streakRef.current);
+        setTypingStreakVisible(true);
+        scheduleStreakDecay();
+      });
+
       restoreEditorViewState(activeTab);
       lastLocalContentRef.current = activeTab?.content ?? editor.getValue();
 
@@ -368,7 +428,23 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
         setCursorPosition(pos.lineNumber, pos.column);
       }
     },
-    [currentScheme, activeTab, markSaved, success, error, handleFocus, setCursorPosition, restoreEditorViewState, updateScrollPosition, groupId, updateCursorPosition]
+    [
+      activeGroupId,
+      activeTab,
+      currentScheme,
+      error,
+      groupId,
+      handleFocus,
+      insertSnippetIntoEditor,
+      markSaved,
+      restoreEditorViewState,
+      scheduleStreakDecay,
+      setCursorPosition,
+      setInsertSnippetFn,
+      success,
+      updateCursorPosition,
+      updateScrollPosition,
+    ]
   );
 
   const handleEditorChange = useCallback(
@@ -418,6 +494,35 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
     lastLocalContentRef.current = activeTab.content;
   }, [activeTab?.content, activeTab?.id, activeTab?.path, restoreEditorViewState]);
 
+  useEffect(() => {
+    if (groupId !== activeGroupId) return;
+    if (!editorRef.current || !monacoRef.current) return;
+    setActiveEditor(editorRef.current, monacoRef.current);
+    setInsertSnippetFn(insertSnippetIntoEditor);
+  }, [activeGroupId, groupId, insertSnippetIntoEditor, setInsertSnippetFn]);
+
+  useEffect(() => {
+    if (!activeTabId) return;
+    if (previousActiveTabRef.current && previousActiveTabRef.current !== activeTabId) {
+      setEditorSwitching(true);
+      const timer = setTimeout(() => setEditorSwitching(false), 150);
+      previousActiveTabRef.current = activeTabId;
+      return () => clearTimeout(timer);
+    }
+    previousActiveTabRef.current = activeTabId;
+  }, [activeTabId]);
+
+  useEffect(() => {
+    return () => {
+      if (streakPauseTimerRef.current) {
+        clearTimeout(streakPauseTimerRef.current);
+      }
+      if (streakCooldownRef.current) {
+        clearInterval(streakCooldownRef.current);
+      }
+    };
+  }, []);
+
   const handleSplitH = useCallback(() => {
     splitGroup(groupId, 'horizontal');
   }, [groupId, splitGroup]);
@@ -433,8 +538,9 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
   if (tabs.length === 0) {
     return (
       <div
-        className={`editor-container ${isDragOver ? 'drag-over' : ''}`}
+        className={`editor-container ${isDragOver ? 'drag-over' : ''} ${focusedPanel === 'editor' ? 'focused' : ''}`}
         onClick={handleFocus}
+        onMouseDown={handleFocus}
         onDragOver={handleGroupDragOver}
         onDragLeave={handleGroupDragLeave}
         onDrop={handleGroupDrop}
@@ -446,8 +552,9 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
 
   return (
     <div
-      className={`editor-container ${isDragOver ? 'drag-over' : ''}`}
+      className={`editor-container ${isDragOver ? 'drag-over' : ''} ${focusedPanel === 'editor' ? 'focused' : ''}`}
       onClick={handleFocus}
+      onMouseDown={handleFocus}
       onDragOver={handleGroupDragOver}
       onDragLeave={handleGroupDragLeave}
       onDrop={handleGroupDrop}
@@ -469,7 +576,7 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
         </div>
       </div>
       {activeTab ? (
-        <div className="editor-pane" style={{ position: 'relative' }}>
+        <div className={`editor-pane ${editorSwitching ? 'switching' : ''}`} style={{ position: 'relative' }}>
           <div
             className="editor-drag-overlay"
             style={{ pointerEvents: isTabDragActive ? 'all' : 'none', opacity: (isDragOver || isTabDragActive) ? 1 : 0 }}
@@ -477,6 +584,21 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
             onDragLeave={handleGroupDragLeave}
             onDrop={handleGroupDrop}
           />
+          <div
+            className={`typing-streak ${typingStreakVisible ? 'active' : ''} ${
+              typingStreak >= 200
+                ? 'tier-ultra'
+                : typingStreak >= 100
+                  ? 'tier-hot'
+                  : typingStreak >= 50
+                    ? 'tier-warm'
+                    : typingStreak >= 10
+                      ? 'tier-mild'
+                      : ''
+            }`}
+          >
+            {typingStreak}
+          </div>
           <div className={`monaco-wrapper ${settings.editor.fontStyle === 'italic' ? 'font-italic' : ''}`}>
             <Editor
               key={activeTab.id}
@@ -506,9 +628,11 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
                 formatOnPaste: settings.editor.formatOnPaste,
                 formatOnType: settings.editor.formatOnType,
                 smoothScrolling: settings.editor.smoothScrolling,
+                cursorSmoothCaretAnimation: 'on' as any,
                 cursorWidth: settings.editor.cursorWidth,
                 cursorBlinking: settings.editor.cursorBlinking as editor.IEditorOptions['cursorBlinking'],
                 cursorStyle: settings.editor.cursorStyle as editor.IEditorOptions['cursorStyle'],
+                renderLineHighlight: 'all',
                 mouseWheelZoom: false,
                 stickyScroll: { enabled: settings.editor.stickyScroll },
                 linkedEditing: settings.editor.linkedEditing,
@@ -537,23 +661,26 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
 }
 
 function WelcomeScreen() {
+  const rows = [
+    ['Ctrl+O', 'Open File'],
+    ['Ctrl+Shift+P', 'Command Palette'],
+    ['Ctrl+P', 'Quick Open'],
+    ['Ctrl+B', 'Toggle Sidebar'],
+    ['F5', 'Build & Run'],
+    ['Ctrl+Shift+B', 'Compile'],
+  ] as const;
+
   return (
     <div className="editor-welcome">
       <div className="editor-welcome-logo">Doom Code</div>
       <div className="editor-welcome-subtitle">Competitive Programming IDE</div>
       <div className="editor-welcome-shortcuts">
-        <span className="editor-welcome-key">Ctrl+O</span>
-        <span className="editor-welcome-desc">Open File</span>
-        <span className="editor-welcome-key">Ctrl+Shift+P</span>
-        <span className="editor-welcome-desc">Command Palette</span>
-        <span className="editor-welcome-key">Ctrl+P</span>
-        <span className="editor-welcome-desc">Quick Open</span>
-        <span className="editor-welcome-key">Ctrl+B</span>
-        <span className="editor-welcome-desc">Toggle Sidebar</span>
-        <span className="editor-welcome-key">F5</span>
-        <span className="editor-welcome-desc">Build & Run</span>
-        <span className="editor-welcome-key">Ctrl+Shift+B</span>
-        <span className="editor-welcome-desc">Compile</span>
+        {rows.map(([key, label], idx) => (
+          <div key={key} className="editor-welcome-row" style={{ animationDelay: `${idx * 60}ms` }}>
+            <span className="editor-welcome-key">{key}</span>
+            <span className="editor-welcome-desc">{label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

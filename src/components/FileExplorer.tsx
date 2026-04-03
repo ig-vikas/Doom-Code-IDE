@@ -1,4 +1,4 @@
-import { useCallback, useState, useRef, KeyboardEvent } from 'react';
+import { useCallback, useEffect, useState, useRef, KeyboardEvent } from 'react';
 import { useFileExplorerStore, useEditorStore, useNotificationStore } from '../stores';
 import { readDirectory, readFileContent, createNewFile, createDirectory, renamePath, deletePath } from '../services/fileService';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -155,10 +155,23 @@ function FileTreeNode({ node, depth, onRefresh }: { node: FileNode; depth: numbe
   const expandDir = useFileExplorerStore((s) => s.expandDir);
   const openTab = useEditorStore((s) => s.openTab);
   const activeGroupId = useEditorStore((s) => s.activeGroupId);
+  const isModifiedFile = useEditorStore((s) =>
+    node.isDir ? false : isPathModifiedInLayout(s.layout, node.path)
+  );
 
   const isExpanded = expandedDirs.has(node.path);
   const isSelected = selectedPath === node.path;
   const isRenaming = renamingPath === node.path;
+  const [renderChildren, setRenderChildren] = useState(isExpanded);
+
+  useEffect(() => {
+    if (isExpanded) {
+      setRenderChildren(true);
+      return;
+    }
+    const timer = setTimeout(() => setRenderChildren(false), 150);
+    return () => clearTimeout(timer);
+  }, [isExpanded]);
 
   const handleClick = useCallback(async () => {
     setSelectedPath(node.path);
@@ -241,11 +254,14 @@ function FileTreeNode({ node, depth, onRefresh }: { node: FileNode; depth: numbe
             onRenamed={onRefresh}
           />
         ) : (
-          <span className="file-tree-name">{node.name}</span>
+          <>
+            <span className="file-tree-name">{node.name}</span>
+            {isModifiedFile ? <span className="file-modified-dot active" /> : null}
+          </>
         )}
       </div>
-      {node.isDir && isExpanded && node.children && (
-        <>
+      {node.isDir && renderChildren && node.children && (
+        <div className={`file-tree-children ${isExpanded ? 'expanded' : 'collapsing'}`}>
           {creatingIn === node.path && (
             <CreateInlineInput
               type={creatingType!}
@@ -255,10 +271,16 @@ function FileTreeNode({ node, depth, onRefresh }: { node: FileNode; depth: numbe
               onCreated={onRefresh}
             />
           )}
-          {node.children.map((child) => (
-            <FileTreeNode key={child.path} node={child} depth={depth + 1} onRefresh={onRefresh} />
+          {node.children.map((child, idx) => (
+            <div
+              key={child.path}
+              className="file-tree-child"
+              style={{ animationDelay: `${Math.min(idx, 14) * 30}ms` }}
+            >
+              <FileTreeNode node={child} depth={depth + 1} onRefresh={onRefresh} />
+            </div>
           ))}
-        </>
+        </div>
       )}
     </>
   );
@@ -416,4 +438,15 @@ function findLeafNode(node: any, id: string): any {
     }
   }
   return null;
+}
+
+function isPathModifiedInLayout(node: any, path: string): boolean {
+  if (!node) return false;
+  if (node.type === 'leaf') {
+    return node.tabs.some((tab: any) => tab.path === path && tab.isModified);
+  }
+  if (node.type === 'split') {
+    return node.children.some((child: any) => isPathModifiedInLayout(child, path));
+  }
+  return false;
 }

@@ -5,12 +5,18 @@ import { fuzzyMatch } from '../utils/fuzzyMatch';
 import { executeCommand as execCmd } from '../services/commandService';
 import { VscSymbolEvent } from 'react-icons/vsc';
 
-export default function CommandPalette() {
+interface CommandPaletteProps {
+  closing?: boolean;
+}
+
+export default function CommandPalette({ closing = false }: CommandPaletteProps) {
   const closeCommandPalette = useUIStore((s) => s.closeCommandPalette);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectionStyle, setSelectionStyle] = useState({ y: 0, height: 0, visible: false });
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const rowRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const filtered = useMemo(() => {
     if (!query.trim()) return defaultCommands;
@@ -63,22 +69,29 @@ export default function CommandPalette() {
           break;
       }
     },
-    [filtered, selectedIndex, runCommand, closeCommandPalette]
+    [closeCommandPalette, filtered, runCommand, selectedIndex]
   );
 
-  // Scroll selected into view
   useEffect(() => {
     const list = listRef.current;
     if (!list) return;
-    const item = list.children[selectedIndex] as HTMLElement;
-    if (item) {
-      item.scrollIntoView({ block: 'nearest' });
+    const item = rowRefs.current[selectedIndex];
+    if (!item) {
+      setSelectionStyle((prev) => ({ ...prev, visible: false }));
+      return;
     }
-  }, [selectedIndex]);
+
+    item.scrollIntoView({ block: 'nearest' });
+    setSelectionStyle({
+      y: item.offsetTop,
+      height: item.offsetHeight,
+      visible: true,
+    });
+  }, [filtered, selectedIndex]);
 
   return (
-    <div className="command-palette-overlay" onClick={closeCommandPalette}>
-      <div className="command-palette" onClick={(e) => e.stopPropagation()} onKeyDown={handleKeyDown}>
+    <div className={`command-palette-overlay ${closing ? 'closing' : 'opening'}`} onClick={closeCommandPalette}>
+      <div className={`command-palette ${closing ? 'closing' : 'opening'}`} onClick={(e) => e.stopPropagation()} onKeyDown={handleKeyDown}>
         <div className="command-palette-input">
           <input
             ref={inputRef}
@@ -89,21 +102,32 @@ export default function CommandPalette() {
           />
         </div>
         <div className="command-palette-results" ref={listRef}>
+          <div
+            className={`command-palette-selection ${selectionStyle.visible ? 'visible' : ''}`}
+            style={{
+              transform: `translateY(${selectionStyle.y}px)`,
+              height: selectionStyle.height ? `${selectionStyle.height}px` : undefined,
+            }}
+          />
           {filtered.length > 0 ? (
             filtered.map((cmd, idx) => (
               <div
                 key={cmd.id}
+                ref={(el) => {
+                  rowRefs.current[idx] = el;
+                }}
                 className={`command-palette-item ${idx === selectedIndex ? 'selected' : ''}`}
                 onClick={() => runCommand(cmd)}
                 onMouseEnter={() => setSelectedIndex(idx)}
+                style={{ animationDelay: `${Math.min(idx, 10) * 20}ms` }}
               >
                 <span className="command-palette-item-icon">
                   <VscSymbolEvent />
                 </span>
                 <span className="command-palette-item-label">{cmd.label}</span>
-                {cmd.keybinding && (
+                {cmd.keybinding ? (
                   <span className="command-palette-item-shortcut">{cmd.keybinding}</span>
-                )}
+                ) : null}
               </div>
             ))
           ) : (

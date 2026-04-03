@@ -5,8 +5,7 @@ import { saveConfig } from '../services/configService';
 import type { AppSettings } from '../types';
 import { VscClose, VscEdit } from 'react-icons/vsc';
 import { defaultKeybindings } from '../config/defaultKeybindings';
-import ThemeEditor from './ThemeEditor';
-import SchemeEditor from './SchemeEditor';
+import { EDITOR_FONT_OPTIONS, isAllowedEditorFontFamily } from '../config/lockedAppearance';
 
 type SettingsCategory = 'editor' | 'appearance' | 'build' | 'terminal' | 'files' | 'keybindings' | 'statistics';
 
@@ -20,15 +19,7 @@ const categories: { id: SettingsCategory; label: string }[] = [
   { id: 'statistics', label: 'Statistics' },
 ];
 
-const editorFontPresets = [
-  { label: 'VS Code', value: '"Consolas", "Courier New", monospace' },
-  { label: 'JetBrains Mono', value: '"JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace' },
-  { label: 'Fira Code', value: '"Fira Code", "JetBrains Mono", "Cascadia Code", "Consolas", monospace' },
-  { label: 'Cascadia Code', value: '"Cascadia Code", "JetBrains Mono", "Consolas", monospace' },
-  { label: 'Consolas', value: '"Consolas", "Courier New", monospace' },
-  { label: 'Source Code Pro', value: '"Source Code Pro", "JetBrains Mono", "Consolas", monospace' },
-  { label: 'IBM Plex Mono', value: '"IBM Plex Mono", "JetBrains Mono", "Consolas", monospace' },
-];
+const editorFontPresets = EDITOR_FONT_OPTIONS;
 
 export default function SettingsPanel() {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('editor');
@@ -98,15 +89,23 @@ function SettingRow({ label, description, children }: { label: string; descripti
 function EditorSettings() {
   const settings = useSettingsStore((s) => s.settings.editor);
   const updateEditor = useSettingsStore((s) => s.updateEditor);
+  const fallbackFont = editorFontPresets[0].value;
+  const selectedFont = isAllowedEditorFontFamily(settings.fontFamily) ? settings.fontFamily : fallbackFont;
+
+  useEffect(() => {
+    if (!isAllowedEditorFontFamily(settings.fontFamily)) {
+      updateEditor({ fontFamily: fallbackFont });
+    }
+  }, [fallbackFont, settings.fontFamily, updateEditor]);
 
   return (
     <div>
       <div className="settings-section">
         <div className="settings-section-title">Font</div>
-        <SettingRow label="Font Preset" description="Quickly switch between common coding fonts">
+        <SettingRow label="Editor Font" description="Select the editor font family">
           <select
             className="settings-select"
-            value={settings.fontFamily}
+            value={selectedFont}
             onChange={(e) => updateEditor({ fontFamily: e.target.value })}
           >
             {editorFontPresets.map((preset) => (
@@ -115,15 +114,6 @@ function EditorSettings() {
               </option>
             ))}
           </select>
-        </SettingRow>
-        <SettingRow label="Font Family" description="Controls the editor font family">
-          <input
-            type="text"
-            className="settings-select"
-            value={settings.fontFamily}
-            onChange={(e) => updateEditor({ fontFamily: e.target.value })}
-            style={{ minWidth: 200 }}
-          />
         </SettingRow>
         <SettingRow label="Font Size" description="Controls the editor font size in pixels">
           <input
@@ -278,27 +268,12 @@ function EditorSettings() {
 }
 
 function AppearanceSettings() {
-  const themes = useThemeStore((s) => s.themes);
   const currentTheme = useThemeStore((s) => s.currentTheme);
-  const setTheme = useThemeStore((s) => s.setTheme);
-  const customThemes = useThemeStore((s) => s.customThemes);
-  const schemes = useEditorSchemeStore((s) => s.schemes);
   const currentScheme = useEditorSchemeStore((s) => s.currentScheme);
-  const setScheme = useEditorSchemeStore((s) => s.setScheme);
   const settings = useSettingsStore((s) => s.settings.ui);
   const updateUI = useSettingsStore((s) => s.updateUI);
   const zoomLevel = useUIStore((s) => s.zoomLevel);
-  const [showThemeEditor, setShowThemeEditor] = useState(false);
-  const [showSchemeEditor, setShowSchemeEditor] = useState(false);
 
-  if (showThemeEditor) {
-    return <ThemeEditor onClose={() => setShowThemeEditor(false)} />;
-  }
-  if (showSchemeEditor) {
-    return <SchemeEditor onClose={() => setShowSchemeEditor(false)} />;
-  }
-
-  // Extract preview colors from a scheme's monacoTheme rules
   const getSchemePreviewColors = (scheme: typeof currentScheme) => {
     const rules = scheme.monacoTheme.rules;
     const find = (token: string) => rules.find((r) => r.token === token)?.foreground;
@@ -314,107 +289,72 @@ function AppearanceSettings() {
     };
   };
 
+  const preview = getSchemePreviewColors(currentScheme);
+
   return (
     <div>
       <div className="settings-section">
-        <div className="settings-section-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>App Theme</span>
-          <button
-            className="snippet-btn secondary"
-            onClick={() => setShowThemeEditor(true)}
-            style={{ fontSize: '0.846rem', padding: '2px 8px' }}
-          >
-            <VscEdit style={{ marginRight: 4 }} /> Customize
-          </button>
-        </div>
+        <div className="settings-section-title">App Theme</div>
         <div style={{ fontSize: '0.846rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-          Controls the UI appearance — titlebar, sidebar, panels, and borders.
+          App theme is locked to Black Mode.
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, marginBottom: 16 }}>
-          {themes.map((theme) => (
-            <div
-              key={theme.id}
-              onClick={() => {
-                setTheme(theme.id);
-                updateUI({ theme: theme.id });
-              }}
-              style={{
-                padding: '12px',
-                borderRadius: 'var(--radius-md)',
-                border: `2px solid ${currentTheme.id === theme.id ? 'var(--accent-primary)' : 'var(--border-default)'}`,
-                background: theme.colors.bgBase,
-                cursor: 'pointer',
-                transition: 'border-color 0.15s',
-              }}
-            >
-              <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-                <div style={{ width: 12, height: 12, borderRadius: 3, background: theme.colors.accentPrimary }} />
-                <div style={{ width: 12, height: 12, borderRadius: 3, background: theme.colors.accentBlue }} />
-                <div style={{ width: 12, height: 12, borderRadius: 3, background: theme.colors.accentGreen }} />
-                <div style={{ width: 12, height: 12, borderRadius: 3, background: theme.colors.accentRed }} />
-              </div>
-              <div style={{ fontSize: '0.923rem', color: theme.colors.textPrimary, fontWeight: 500 }}>
-                {theme.name}
-              </div>
-              <div style={{ fontSize: '0.769rem', color: theme.colors.textMuted }}>
-                {theme.type}
-              </div>
+          <div
+            style={{
+              padding: '12px',
+              borderRadius: 'var(--radius-md)',
+              border: '2px solid var(--accent-primary)',
+              background: currentTheme.colors.bgBase,
+              cursor: 'default',
+            }}
+          >
+            <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+              <div style={{ width: 12, height: 12, borderRadius: 3, background: currentTheme.colors.accentPrimary }} />
+              <div style={{ width: 12, height: 12, borderRadius: 3, background: currentTheme.colors.accentBlue }} />
+              <div style={{ width: 12, height: 12, borderRadius: 3, background: currentTheme.colors.accentGreen }} />
+              <div style={{ width: 12, height: 12, borderRadius: 3, background: currentTheme.colors.accentRed }} />
             </div>
-          ))}
+            <div style={{ fontSize: '0.923rem', color: currentTheme.colors.textPrimary, fontWeight: 500 }}>
+              {currentTheme.name}
+            </div>
+            <div style={{ fontSize: '0.769rem', color: currentTheme.colors.textMuted }}>
+              Locked
+            </div>
+          </div>
         </div>
       </div>
 
       <div className="settings-section">
-        <div className="settings-section-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>Editor Color Scheme</span>
-          <button
-            className="snippet-btn secondary"
-            onClick={() => setShowSchemeEditor(true)}
-            style={{ fontSize: '0.846rem', padding: '2px 8px' }}
-          >
-            <VscEdit style={{ marginRight: 4 }} /> Customize
-          </button>
-        </div>
+        <div className="settings-section-title">Editor Color Scheme</div>
         <div style={{ fontSize: '0.846rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-          Controls syntax highlighting and editor colors — independent from the app theme.
+          Editor scheme is locked to Dark+ (VS Code).
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8, marginBottom: 16 }}>
-          {schemes.map((scheme) => {
-            const preview = getSchemePreviewColors(scheme);
-            const isActive = currentScheme.id === scheme.id;
-            return (
-              <div
-                key={scheme.id}
-                onClick={() => {
-                  setScheme(scheme.id);
-                  updateUI({ editorColorScheme: scheme.id });
-                }}
-                className="editor-scheme-card"
-                style={{
-                  border: `2px solid ${isActive ? 'var(--accent-primary)' : 'var(--border-default)'}`,
-                  background: preview.bg,
-                }}
-              >
-                <div className="editor-scheme-preview">
-                  <span style={{ color: `#${preview.comment}`, fontStyle: 'italic' }}>{'// code'}</span>
-                  <span><span style={{ color: `#${preview.keyword}` }}>int</span> <span style={{ color: `#${preview.fn}` }}>main</span><span style={{ color: preview.fg }}>() {'{'}</span></span>
-                  <span>{'  '}<span style={{ color: `#${preview.keyword}` }}>return</span> <span style={{ color: `#${preview.number}` }}>0</span><span style={{ color: preview.fg }}>;</span></span>
-                  <span style={{ color: preview.fg }}>{'}'}</span>
-                </div>
-                <div className="editor-scheme-info">
-                  <div className="editor-scheme-name">{scheme.name}</div>
-                  <div className="editor-scheme-tokens">
-                    <span style={{ background: `#${preview.keyword}` }} />
-                    <span style={{ background: `#${preview.string}` }} />
-                    <span style={{ background: `#${preview.fn}` }} />
-                    <span style={{ background: `#${preview.type}` }} />
-                    <span style={{ background: `#${preview.number}` }} />
-                    <span style={{ background: `#${preview.comment}` }} />
-                  </div>
-                </div>
+          <div
+            className="editor-scheme-card"
+            style={{
+              border: '2px solid var(--accent-primary)',
+              background: preview.bg,
+            }}
+          >
+            <div className="editor-scheme-preview">
+              <span style={{ color: `#${preview.comment}`, fontStyle: 'italic' }}>{'// code'}</span>
+              <span><span style={{ color: `#${preview.keyword}` }}>int</span> <span style={{ color: `#${preview.fn}` }}>main</span><span style={{ color: preview.fg }}>() {'{'}</span></span>
+              <span>{'  '}<span style={{ color: `#${preview.keyword}` }}>return</span> <span style={{ color: `#${preview.number}` }}>0</span><span style={{ color: preview.fg }}>;</span></span>
+              <span style={{ color: preview.fg }}>{'}'}</span>
+            </div>
+            <div className="editor-scheme-info">
+              <div className="editor-scheme-name">{currentScheme.name}</div>
+              <div className="editor-scheme-tokens">
+                <span style={{ background: `#${preview.keyword}` }} />
+                <span style={{ background: `#${preview.string}` }} />
+                <span style={{ background: `#${preview.fn}` }} />
+                <span style={{ background: `#${preview.type}` }} />
+                <span style={{ background: `#${preview.number}` }} />
+                <span style={{ background: `#${preview.comment}` }} />
               </div>
-            );
-          })}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -446,9 +386,7 @@ function AppearanceSettings() {
             max={200}
             value={zoomLevel}
             onChange={(e) => {
-              const ui = useUIStore.getState();
               const v = Number(e.target.value);
-              // Directly set zoom
               useUIStore.setState({ zoomLevel: v });
               updateUI({ zoomLevel: v });
             }}
@@ -898,3 +836,4 @@ function SolveStats() {
     </div>
   );
 }
+

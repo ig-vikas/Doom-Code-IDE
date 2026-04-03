@@ -15,6 +15,7 @@ interface EditorState {
   cursorPosition: { line: number; column: number } | null;
   insertSnippet: ((text: string) => void) | null;
   fileViewState: Record<string, StoredFileViewState>;
+  tabSavePulse: Record<string, number>;
 
   // Actions
   openFile: (path: string, content: string, groupId?: string, isPreview?: boolean) => void;
@@ -50,6 +51,7 @@ interface EditorState {
   findTabByPath: (path: string) => { groupId: string; tab: FileTab } | null;
   refreshTabContent: (tabId: string, content: string) => void;
   updateSplitSizes: (parentPath: number[], sizes: number[]) => void;
+  pulseTabSaveByPath: (path: string) => void;
 }
 
 const initialGroupId = generateId();
@@ -204,6 +206,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   cursorPosition: null,
   insertSnippet: null,
   fileViewState: {},
+  tabSavePulse: {},
 
   openTab: (groupId, tab) => {
     const state = get();
@@ -373,6 +376,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   markSaved: (path) => {
     const groups = getAllGroups(get().layout);
+    get().pulseTabSaveByPath(path);
     for (const g of groups) {
       const tab = g.tabs.find((t) => t.path === path);
       if (tab) {
@@ -402,6 +406,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   markTabSaved: (groupId, tabId, path) => {
     const location = findTabLocation(get().layout, tabId);
+    if (path) {
+      get().pulseTabSaveByPath(path);
+    } else if (location?.tab.path) {
+      get().pulseTabSaveByPath(location.tab.path);
+    }
     set((state) => {
       const nextViewState = { ...state.fileViewState };
       if (path && location) {
@@ -810,4 +819,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     };
     set((state) => ({ layout: updateAtPath(state.layout, parentPath) }));
   },
+
+  pulseTabSaveByPath: (path) =>
+    set((state) => ({
+      tabSavePulse: {
+        ...state.tabSavePulse,
+        [normalizePathKey(path)]: Date.now(),
+      },
+    })),
 }));

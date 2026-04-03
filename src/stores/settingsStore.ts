@@ -1,6 +1,27 @@
 import { create } from 'zustand';
 import type { AppSettings } from '../types';
 import { defaultSettings } from '../config/defaultSettings';
+import {
+  DEFAULT_EDITOR_FONT_FAMILY,
+  isAllowedEditorFontFamily,
+  LOCKED_APP_THEME_ID,
+  LOCKED_EDITOR_SCHEME_ID,
+} from '../config/lockedAppearance';
+
+function clampEditorSettings(editor: AppSettings['editor']): AppSettings['editor'] {
+  return {
+    ...editor,
+    fontFamily: isAllowedEditorFontFamily(editor.fontFamily) ? editor.fontFamily : DEFAULT_EDITOR_FONT_FAMILY,
+  };
+}
+
+function clampUISettings(ui: AppSettings['ui']): AppSettings['ui'] {
+  return {
+    ...ui,
+    theme: LOCKED_APP_THEME_ID,
+    editorColorScheme: LOCKED_EDITOR_SCHEME_ID,
+  };
+}
 
 interface SettingsState {
   settings: AppSettings;
@@ -17,19 +38,38 @@ interface SettingsState {
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
-  settings: { ...defaultSettings },
+  settings: {
+    ...defaultSettings,
+    editor: clampEditorSettings(defaultSettings.editor),
+    ui: clampUISettings(defaultSettings.ui),
+  },
 
   setSettings: (partial) =>
-    set((state) => ({ settings: { ...state.settings, ...partial } })),
+    set((state) => {
+      const merged = { ...state.settings, ...partial };
+      return {
+        settings: {
+          ...merged,
+          editor: clampEditorSettings(merged.editor),
+          ui: clampUISettings(merged.ui),
+        },
+      };
+    }),
 
   updateEditor: (editor) =>
     set((state) => ({
-      settings: { ...state.settings, editor: { ...state.settings.editor, ...editor } },
+      settings: {
+        ...state.settings,
+        editor: clampEditorSettings({ ...state.settings.editor, ...editor }),
+      },
     })),
 
   updateUI: (ui) =>
     set((state) => ({
-      settings: { ...state.settings, ui: { ...state.settings.ui, ...ui } },
+      settings: {
+        ...state.settings,
+        ui: clampUISettings({ ...state.settings.ui, ...ui }),
+      },
     })),
 
   updateBuild: (build) =>
@@ -57,20 +97,33 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       settings: { ...state.settings, animations: { ...state.settings.animations, ...animations } },
     })),
 
-  resetSettings: () => set({ settings: { ...defaultSettings } }),
-
-  loadSettings: (loaded: AppSettings) => {
+  resetSettings: () =>
     set({
       settings: {
         ...defaultSettings,
-        ...loaded,
-        editor: { ...defaultSettings.editor, ...loaded.editor },
-        ui: { ...defaultSettings.ui, ...loaded.ui },
-        build: { ...defaultSettings.build, ...loaded.build },
-        template: { ...defaultSettings.template, ...loaded.template },
-        terminal: { ...defaultSettings.terminal, ...loaded.terminal },
-        files: { ...defaultSettings.files, ...loaded.files },
-        animations: { ...defaultSettings.animations, ...loaded.animations },
+        editor: clampEditorSettings(defaultSettings.editor),
+        ui: clampUISettings(defaultSettings.ui),
+      },
+    }),
+
+  loadSettings: (loaded: AppSettings) => {
+    const merged: AppSettings = {
+      ...defaultSettings,
+      ...loaded,
+      editor: { ...defaultSettings.editor, ...loaded.editor },
+      ui: { ...defaultSettings.ui, ...loaded.ui },
+      build: { ...defaultSettings.build, ...loaded.build },
+      template: { ...defaultSettings.template, ...loaded.template },
+      terminal: { ...defaultSettings.terminal, ...loaded.terminal },
+      files: { ...defaultSettings.files, ...loaded.files },
+      animations: { ...defaultSettings.animations, ...loaded.animations },
+    };
+
+    set({
+      settings: {
+        ...merged,
+        editor: clampEditorSettings(merged.editor),
+        ui: clampUISettings(merged.ui),
       },
     });
   },
