@@ -300,6 +300,36 @@ export default function App() {
   }, [zoomLevel]);
 
   useEffect(() => {
+    const root = document.documentElement;
+    const syncViewportSize = () => {
+      root.style.setProperty('--viewport-width', `${window.innerWidth}px`);
+      root.style.setProperty('--viewport-height', `${window.innerHeight}px`);
+    };
+
+    syncViewportSize();
+    window.addEventListener('resize', syncViewportSize);
+
+    let unlistenResize: (() => void) | null = null;
+    getCurrentWindow()
+      .onResized(() => {
+        syncViewportSize();
+      })
+      .then((unlisten) => {
+        unlistenResize = unlisten;
+      })
+      .catch(() => {
+        // no-op: fallback resize listener above still keeps layout in sync
+      });
+
+    return () => {
+      window.removeEventListener('resize', syncViewportSize);
+      if (unlistenResize) {
+        unlistenResize();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (uiFontFamily) {
       document.body.style.fontFamily = uiFontFamily;
     }

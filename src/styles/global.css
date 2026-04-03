@@ -59,6 +59,8 @@
   --tab-height: 36px;
   --activity-bar-width: 48px;
   --app-scale: 1;
+  --viewport-width: 100vw;
+  --viewport-height: 100vh;
 }
 
 /* --- Reset & Base --- */
@@ -192,8 +194,8 @@ input::placeholder, textarea::placeholder {
 .app-container {
   display: flex;
   flex-direction: column;
-  height: calc(100% / var(--app-scale));
-  width: calc(100% / var(--app-scale));
+  height: calc(var(--viewport-height) / var(--app-scale));
+  width: calc(var(--viewport-width) / var(--app-scale));
   overflow: hidden;
   transform: scale(var(--app-scale));
   transform-origin: top left;
@@ -204,8 +206,8 @@ input::placeholder, textarea::placeholder {
 
 .app-shell {
   position: relative;
-  height: 100%;
-  width: 100%;
+  height: var(--viewport-height);
+  width: var(--viewport-width);
   overflow: hidden;
   background: var(--bg-base);
 }
@@ -1250,12 +1252,12 @@ input::placeholder, textarea::placeholder {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  border: 1px solid #3f434b;
+  border: 1px solid #272a2e;
   transition: border-color 200ms ease;
 }
 
 .editor-container.focused {
-  border-color: #4a4f58;
+  border-color: #2e3237;
 }
 
 .editor-welcome {
