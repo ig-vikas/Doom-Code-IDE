@@ -14,7 +14,14 @@ import { useUIStore, useThemeStore, useSettingsStore, useEditorSchemeStore, useE
 import { useGlobalKeybindings } from './hooks/useKeybindings';
 import { useResizable } from './hooks/useResizable';
 import { loadConfig } from './services/configService';
-import { initializeCommands, saveSession, restoreSession, refreshAllOpenFiles } from './services/commandService';
+import {
+  initializeCommands,
+  saveSession,
+  restoreSession,
+  refreshAllOpenFiles,
+  isCalibratedFullscreenActive,
+  exitCalibratedFullscreenMode,
+} from './services/commandService';
 import { useSolveCounterStore } from './stores/solveCounterStore';
 import { applyWarmTint, getWarmFactorForTime, interpolateColor } from './utils/color';
 import type { AppSettings, ThemeColors } from './types';
@@ -330,12 +337,16 @@ export default function App() {
       if (e.key !== 'Escape' || toggling) return;
       const win = getCurrentWindow();
       const isFullscreen = await win.isFullscreen();
-      if (!isFullscreen) return;
+      if (!isFullscreen && !isCalibratedFullscreenActive()) return;
       toggling = true;
       e.preventDefault();
       e.stopPropagation();
       try {
-        await win.setFullscreen(false);
+        if (isCalibratedFullscreenActive()) {
+          await exitCalibratedFullscreenMode();
+        } else {
+          await win.setFullscreen(false);
+        }
       } finally {
         toggling = false;
       }

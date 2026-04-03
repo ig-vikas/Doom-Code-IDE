@@ -4,6 +4,7 @@ import { useUIStore } from '../stores';
 import { useSolveCounterStore } from '../stores/solveCounterStore';
 import MenuBar from './MenuBar';
 import { VscChromeMinimize, VscChromeMaximize, VscChromeRestore, VscChromeClose, VscAdd, VscRemove } from 'react-icons/vsc';
+import { isCalibratedFullscreenActive, exitCalibratedFullscreenMode } from '../services/commandService';
 
 // Import the app icon - Vite handles the asset path
 import appIcon from '/src-tauri/icons/icon.png';
@@ -21,6 +22,9 @@ export default function TitleBar() {
 
   const handleToggleMaximize = useCallback(async () => {
     const win = getCurrentWindow();
+    if (isCalibratedFullscreenActive()) {
+      await exitCalibratedFullscreenMode();
+    }
     const isMax = await win.isMaximized();
     if (isMax) {
       await win.unmaximize();
