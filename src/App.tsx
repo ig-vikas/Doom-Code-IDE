@@ -19,8 +19,6 @@ import {
   saveSession,
   restoreSession,
   refreshAllOpenFiles,
-  isCalibratedFullscreenActive,
-  exitCalibratedFullscreenMode,
 } from './services/commandService';
 import { useSolveCounterStore } from './stores/solveCounterStore';
 import { applyWarmTint, getWarmFactorForTime, interpolateColor } from './utils/color';
@@ -337,16 +335,12 @@ export default function App() {
       if (e.key !== 'Escape' || toggling) return;
       const win = getCurrentWindow();
       const isFullscreen = await win.isFullscreen();
-      if (!isFullscreen && !isCalibratedFullscreenActive()) return;
+      if (!isFullscreen) return;
       toggling = true;
       e.preventDefault();
       e.stopPropagation();
       try {
-        if (isCalibratedFullscreenActive()) {
-          await exitCalibratedFullscreenMode();
-        } else {
-          await win.setFullscreen(false);
-        }
+        await win.setFullscreen(false);
       } finally {
         toggling = false;
       }

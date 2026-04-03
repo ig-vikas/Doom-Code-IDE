@@ -10,24 +10,12 @@ import { readFileContent, writeFileContent, readDirectory } from './fileService'
 import { compileCpp, runExecutable, killRunningProcess } from './buildService';
 import { runShellCommand } from './systemService';
 import { saveConfig, loadConfig } from './configService';
-import { getCurrentWindow, currentMonitor, PhysicalPosition, PhysicalSize } from '@tauri-apps/api/window';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { generateId, getFileName, getFileExtension, getLanguageFromExtension, getDirectory } from '../utils/fileUtils';
 
 type CommandHandler = () => void | Promise<void>;
 
 const registry = new Map<string, CommandHandler>();
-
-interface FullscreenSnapshot {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  wasMaximized: boolean;
-}
-
-let calibratedFullscreenActive = false;
-let calibratedFullscreenBusy = false;
-let calibratedFullscreenSnapshot: FullscreenSnapshot | null = null;
 
 // Reference to active Monaco editor
 let activeEditor: any = null;
@@ -68,89 +56,6 @@ export function executeCommand(id: string) {
 
 export function hasCommand(id: string): boolean {
   return registry.has(id);
-}
-
-export function isCalibratedFullscreenActive(): boolean {
-  return calibratedFullscreenActive;
-}
-
-async function enterCalibratedFullscreenMode() {
-  const win = getCurrentWindow();
-  const monitor = await currentMonitor();
-  if (!monitor) {
-    const isFs = await win.isFullscreen();
-    if (!isFs) {
-      await win.setFullscreen(true);
-    }
-    calibratedFullscreenActive = false;
-    calibratedFullscreenSnapshot = null;
-    return;
-  }
-
-  const currentPos = await win.outerPosition();
-  const currentSize = await win.outerSize();
-  const wasMaximized = await win.isMaximized();
-  calibratedFullscreenSnapshot = {
-    x: currentPos.x,
-    y: currentPos.y,
-    width: currentSize.width,
-    height: currentSize.height,
-    wasMaximized,
-  };
-
-  const isFs = await win.isFullscreen();
-  if (isFs) {
-    await win.setFullscreen(false);
-  }
-  if (wasMaximized) {
-    await win.unmaximize();
-  }
-
-  await win.setPosition(new PhysicalPosition(monitor.position.x, monitor.position.y));
-  await win.setSize(new PhysicalSize(monitor.size.width, monitor.size.height));
-  calibratedFullscreenActive = true;
-}
-
-export async function exitCalibratedFullscreenMode() {
-  const win = getCurrentWindow();
-
-  const isFs = await win.isFullscreen();
-  if (isFs) {
-    await win.setFullscreen(false);
-  }
-
-  if (!calibratedFullscreenActive) {
-    return;
-  }
-
-  const snapshot = calibratedFullscreenSnapshot;
-  calibratedFullscreenActive = false;
-  calibratedFullscreenSnapshot = null;
-
-  if (!snapshot) return;
-
-  await win.unmaximize();
-  if (snapshot.wasMaximized) {
-    await win.maximize();
-    return;
-  }
-
-  await win.setSize(new PhysicalSize(snapshot.width, snapshot.height));
-  await win.setPosition(new PhysicalPosition(snapshot.x, snapshot.y));
-}
-
-export async function toggleCalibratedFullscreenMode() {
-  if (calibratedFullscreenBusy) return;
-  calibratedFullscreenBusy = true;
-  try {
-    if (calibratedFullscreenActive) {
-      await exitCalibratedFullscreenMode();
-    } else {
-      await enterCalibratedFullscreenMode();
-    }
-  } finally {
-    calibratedFullscreenBusy = false;
-  }
 }
 
 // Helpers
@@ -535,7 +440,9 @@ export function initializeCommands() {
   });
 
   registerCommand('view.toggleFullscreen', async () => {
-    await toggleCalibratedFullscreenMode();
+    const win = getCurrentWindow();
+    const isFS = await win.isFullscreen();
+    await win.setFullscreen(!isFS);
   });
 
   registerCommand('view.zoomIn', () => useUIStore.getState().zoomIn());
