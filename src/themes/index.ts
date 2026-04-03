@@ -6,6 +6,7 @@ export { nordTheme } from './nord';
 export { gruvboxTheme } from './gruvbox';
 export { tokyoNightTheme } from './tokyoNight';
 export { vscodeDarkTheme } from './vscodeDark';
+export { vscodeDarkForgeTheme } from './vscodeDarkForge';
 
 import { obsidianTheme } from './obsidian';
 import { dawnTheme } from './dawn';
@@ -15,10 +16,12 @@ import { nordTheme } from './nord';
 import { gruvboxTheme } from './gruvbox';
 import { tokyoNightTheme } from './tokyoNight';
 import { vscodeDarkTheme } from './vscodeDark';
+import { vscodeDarkForgeTheme } from './vscodeDarkForge';
 import type { ThemeDefinition } from '../types';
 
 export const allThemes: ThemeDefinition[] = [
   vscodeDarkTheme,
+  vscodeDarkForgeTheme,
   obsidianTheme,
   dawnTheme,
   monokaiTheme,

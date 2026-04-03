@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import type { ThemeDefinition, ThemeColors } from '../types';
 import { vscodeDarkTheme } from '../themes/vscodeDark';
+import { vscodeDarkForgeTheme } from '../themes/vscodeDarkForge';
 import type { CustomThemeJSON } from '../services/customThemeService';
 
-const exclusiveTheme: ThemeDefinition = vscodeDarkTheme;
-
-const builtInThemes: ThemeDefinition[] = [exclusiveTheme];
+const defaultTheme: ThemeDefinition = vscodeDarkTheme;
+const builtInThemes: ThemeDefinition[] = [vscodeDarkTheme, vscodeDarkForgeTheme];
 
 interface ThemeState {
   currentTheme: ThemeDefinition;
@@ -21,53 +21,58 @@ interface ThemeState {
 }
 
 export const useThemeStore = create<ThemeState>((set, get) => ({
-  currentTheme: exclusiveTheme,
+  currentTheme: defaultTheme,
   themes: builtInThemes,
   customThemes: [],
-  colors: exclusiveTheme.colors,
+  colors: defaultTheme.colors,
 
   setTheme: (id) => {
-    if (id === exclusiveTheme.id) {
-      set({ currentTheme: exclusiveTheme, colors: exclusiveTheme.colors });
-      return;
-    }
-    // The app theme is intentionally locked to a single black mode theme.
-    set({ currentTheme: exclusiveTheme, colors: exclusiveTheme.colors });
+    const selectedTheme = get().themes.find((theme) => theme.id === id) ?? defaultTheme;
+    set({ currentTheme: selectedTheme, colors: selectedTheme.colors });
   },
 
-  getTheme: (id) => (id === exclusiveTheme.id ? exclusiveTheme : undefined),
+  getTheme: (id) => get().themes.find((theme) => theme.id === id),
 
   loadCustomThemesFromDisk: async () => {
-    set({
-      currentTheme: exclusiveTheme,
-      themes: builtInThemes,
-      customThemes: [],
-      colors: exclusiveTheme.colors,
+    set((state) => {
+      const activeTheme = builtInThemes.find((theme) => theme.id === state.currentTheme.id) ?? defaultTheme;
+      return {
+        currentTheme: activeTheme,
+        themes: builtInThemes,
+        customThemes: [],
+        colors: activeTheme.colors,
+      };
     });
   },
 
   addCustomTheme: async (_json) => {
     // Custom app themes are disabled.
-    return exclusiveTheme.id;
+    return get().currentTheme.id;
   },
 
   updateCustomTheme: async (_id, _json) => {
     // Custom app themes are disabled.
-    set({
-      currentTheme: exclusiveTheme,
-      themes: builtInThemes,
-      customThemes: [],
-      colors: exclusiveTheme.colors,
+    set((state) => {
+      const activeTheme = builtInThemes.find((theme) => theme.id === state.currentTheme.id) ?? defaultTheme;
+      return {
+        currentTheme: activeTheme,
+        themes: builtInThemes,
+        customThemes: [],
+        colors: activeTheme.colors,
+      };
     });
   },
 
   removeCustomTheme: async (_id) => {
     // Custom app themes are disabled.
-    set({
-      currentTheme: exclusiveTheme,
-      themes: builtInThemes,
-      customThemes: [],
-      colors: exclusiveTheme.colors,
+    set((state) => {
+      const activeTheme = builtInThemes.find((theme) => theme.id === state.currentTheme.id) ?? defaultTheme;
+      return {
+        currentTheme: activeTheme,
+        themes: builtInThemes,
+        customThemes: [],
+        colors: activeTheme.colors,
+      };
     });
   },
 }));

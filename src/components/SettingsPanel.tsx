@@ -269,6 +269,8 @@ function EditorSettings() {
 
 function AppearanceSettings() {
   const currentTheme = useThemeStore((s) => s.currentTheme);
+  const themes = useThemeStore((s) => s.themes);
+  const setTheme = useThemeStore((s) => s.setTheme);
   const currentScheme = useEditorSchemeStore((s) => s.currentScheme);
   const settings = useSettingsStore((s) => s.settings.ui);
   const updateUI = useSettingsStore((s) => s.updateUI);
@@ -291,36 +293,50 @@ function AppearanceSettings() {
 
   const preview = getSchemePreviewColors(currentScheme);
 
+  const handleThemeSelect = (themeId: string) => {
+    setTheme(themeId);
+    updateUI({ theme: themeId });
+  };
+
   return (
     <div>
       <div className="settings-section">
         <div className="settings-section-title">App Theme</div>
         <div style={{ fontSize: '0.846rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-          App theme is locked to Black Mode.
+          Choose one of the two black-mode app themes.
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, marginBottom: 16 }}>
-          <div
-            style={{
-              padding: '12px',
-              borderRadius: 'var(--radius-md)',
-              border: '2px solid var(--accent-primary)',
-              background: currentTheme.colors.bgBase,
-              cursor: 'default',
-            }}
-          >
-            <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-              <div style={{ width: 12, height: 12, borderRadius: 3, background: currentTheme.colors.accentPrimary }} />
-              <div style={{ width: 12, height: 12, borderRadius: 3, background: currentTheme.colors.accentBlue }} />
-              <div style={{ width: 12, height: 12, borderRadius: 3, background: currentTheme.colors.accentGreen }} />
-              <div style={{ width: 12, height: 12, borderRadius: 3, background: currentTheme.colors.accentRed }} />
-            </div>
-            <div style={{ fontSize: '0.923rem', color: currentTheme.colors.textPrimary, fontWeight: 500 }}>
-              {currentTheme.name}
-            </div>
-            <div style={{ fontSize: '0.769rem', color: currentTheme.colors.textMuted }}>
-              Locked
-            </div>
-          </div>
+          {themes.map((theme) => {
+            const isActive = currentTheme.id === theme.id;
+            return (
+              <button
+                key={theme.id}
+                type="button"
+                onClick={() => handleThemeSelect(theme.id)}
+                style={{
+                  padding: '12px',
+                  borderRadius: 'var(--radius-md)',
+                  border: isActive ? '2px solid var(--accent-primary)' : '1px solid var(--border-default)',
+                  background: theme.colors.bgBase,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                  <div style={{ width: 12, height: 12, borderRadius: 3, background: theme.colors.accentPrimary }} />
+                  <div style={{ width: 12, height: 12, borderRadius: 3, background: theme.colors.accentBlue }} />
+                  <div style={{ width: 12, height: 12, borderRadius: 3, background: theme.colors.accentGreen }} />
+                  <div style={{ width: 12, height: 12, borderRadius: 3, background: theme.colors.accentRed }} />
+                </div>
+                <div style={{ fontSize: '0.923rem', color: theme.colors.textPrimary, fontWeight: 500 }}>
+                  {theme.name}
+                </div>
+                <div style={{ fontSize: '0.769rem', color: theme.colors.textMuted }}>
+                  {isActive ? 'Active' : 'Click to apply'}
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 

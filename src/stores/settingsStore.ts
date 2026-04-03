@@ -3,6 +3,7 @@ import type { AppSettings } from '../types';
 import { defaultSettings } from '../config/defaultSettings';
 import {
   DEFAULT_EDITOR_FONT_FAMILY,
+  isAllowedAppThemeId,
   isAllowedEditorFontFamily,
   LOCKED_APP_THEME_ID,
   LOCKED_EDITOR_SCHEME_ID,
@@ -18,7 +19,7 @@ function clampEditorSettings(editor: AppSettings['editor']): AppSettings['editor
 function clampUISettings(ui: AppSettings['ui']): AppSettings['ui'] {
   return {
     ...ui,
-    theme: LOCKED_APP_THEME_ID,
+    theme: isAllowedAppThemeId(ui.theme) ? ui.theme : LOCKED_APP_THEME_ID,
     editorColorScheme: LOCKED_EDITOR_SCHEME_ID,
   };
 }
