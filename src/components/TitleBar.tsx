@@ -46,6 +46,7 @@ export default function TitleBar() {
 
   return (
     <div className="titlebar">
+      <div className="titlebar-drag-region" data-tauri-drag-region="" />
       <div className="titlebar-logo">
         <img src={appIcon} alt="Doom Code" className="titlebar-icon" />
         <span>Doom Code</span>
