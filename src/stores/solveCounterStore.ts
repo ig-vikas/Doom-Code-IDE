@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { loadConfig, saveConfig } from '../services/configService';
+import { loadConfig, saveConfigIfChanged } from '../services/configService';
 
 /** yyyy-mm-dd */
 function todayKey(): string {
@@ -28,6 +28,15 @@ interface SolveCounterState {
 }
 
 const CONFIG_FILE = 'solve-counter.json';
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function schedulePersist(records: Record<string, DayRecord>) {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveConfigIfChanged(CONFIG_FILE, { records }).catch(() => {});
+    saveTimer = null;
+  }, 300);
+}
 
 export const useSolveCounterStore = create<SolveCounterState>((set, get) => ({
   records: {},
@@ -49,8 +58,7 @@ export const useSolveCounterStore = create<SolveCounterState>((set, get) => ({
       todayCount: updated.count,
       todayAdditions: updated.additions,
     });
-    // Auto-save
-    saveConfig(CONFIG_FILE, { records: newRecords }).catch(() => {});
+    schedulePersist(newRecords);
   },
 
   decrement: () => {
@@ -68,7 +76,7 @@ export const useSolveCounterStore = create<SolveCounterState>((set, get) => ({
       todayCount: updated.count,
       todayAdditions: updated.additions,
     });
-    saveConfig(CONFIG_FILE, { records: newRecords }).catch(() => {});
+    schedulePersist(newRecords);
   },
 
   loadFromDisk: async () => {
@@ -89,7 +97,11 @@ export const useSolveCounterStore = create<SolveCounterState>((set, get) => ({
   },
 
   saveToDisk: async () => {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
     const { records } = get();
-    await saveConfig(CONFIG_FILE, { records }).catch(() => {});
+    await saveConfigIfChanged(CONFIG_FILE, { records }).catch(() => {});
   },
 }));

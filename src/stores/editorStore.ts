@@ -134,6 +134,36 @@ function getTabViewStateKey(tab: Pick<FileTab, 'id' | 'path'> | null): string | 
   return tab.path ? normalizePathKey(tab.path) : `untitled:${tab.id}`;
 }
 
+function collectOpenViewStateKeys(node: SplitNode, output: Set<string>) {
+  if (node.type === 'leaf') {
+    for (const tab of node.tabs) {
+      const key = getTabViewStateKey(tab);
+      if (key) output.add(key);
+    }
+    return;
+  }
+
+  for (const child of node.children) {
+    collectOpenViewStateKeys(child, output);
+  }
+}
+
+function pruneFileViewStateForOpenTabs(
+  layout: SplitNode,
+  fileViewState: Record<string, StoredFileViewState>
+): Record<string, StoredFileViewState> {
+  const openKeys = new Set<string>();
+  collectOpenViewStateKeys(layout, openKeys);
+  const next: Record<string, StoredFileViewState> = {};
+  for (const key of openKeys) {
+    const existing = fileViewState[key];
+    if (existing) {
+      next[key] = existing;
+    }
+  }
+  return next;
+}
+
 function hasMeaningfulViewState(tab: Partial<FileTab>): boolean {
   return (
     typeof tab.cursorLine === 'number' &&
@@ -215,13 +245,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const existing = group.tabs.find((t) => t.id === tab.id || t.path === tab.path);
     if (existing) {
       const nextTab = applyViewState(state, { ...existing, ...tab, id: existing.id }, existing);
+      const nextLayout = updateGroup(state.layout, groupId, (leaf) => ({
+        ...leaf,
+        activeTabId: existing.id,
+        tabs: leaf.tabs.map((t) => t.id === existing.id ? nextTab : t),
+      }));
       set({
-        layout: updateGroup(state.layout, groupId, (leaf) => ({
-          ...leaf,
-          activeTabId: existing.id,
-          tabs: leaf.tabs.map((t) => t.id === existing.id ? nextTab : t),
-        })),
+        layout: nextLayout,
         activeGroupId: groupId,
+        fileViewState: pruneFileViewStateForOpenTabs(nextLayout, state.fileViewState),
       });
     } else {
       const nextTab = applyViewState(state, tab);
@@ -233,13 +265,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       } else {
         newTabs.push(nextTab);
       }
+      const nextLayout = updateGroup(state.layout, groupId, (leaf) => ({
+        ...leaf,
+        tabs: newTabs,
+        activeTabId: nextTab.id,
+      }));
       set({
-        layout: updateGroup(state.layout, groupId, (leaf) => ({
-          ...leaf,
-          tabs: newTabs,
-          activeTabId: nextTab.id,
-        })),
+        layout: nextLayout,
         activeGroupId: groupId,
+        fileViewState: pruneFileViewStateForOpenTabs(nextLayout, state.fileViewState),
       });
     }
   },
@@ -279,23 +313,26 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     };
     const newTab = applyViewState(state, baseTab);
 
-    set({
-      layout: updateGroup(state.layout, targetGroupId, (leaf) => {
-        // Replace preview tab if exists
-        let newTabs = [...leaf.tabs];
-        if (isPreview) {
-          const previewIdx = newTabs.findIndex((t) => t.isPreview);
-          if (previewIdx >= 0) {
-            newTabs[previewIdx] = newTab;
-          } else {
-            newTabs.push(newTab);
-          }
+    const nextLayout = updateGroup(state.layout, targetGroupId, (leaf) => {
+      // Replace preview tab if exists
+      let newTabs = [...leaf.tabs];
+      if (isPreview) {
+        const previewIdx = newTabs.findIndex((t) => t.isPreview);
+        if (previewIdx >= 0) {
+          newTabs[previewIdx] = newTab;
         } else {
           newTabs.push(newTab);
         }
-        return { ...leaf, tabs: newTabs, activeTabId: newTab.id };
-      }),
+      } else {
+        newTabs.push(newTab);
+      }
+      return { ...leaf, tabs: newTabs, activeTabId: newTab.id };
+    });
+
+    set({
+      layout: nextLayout,
       activeGroupId: targetGroupId,
+      fileViewState: pruneFileViewStateForOpenTabs(nextLayout, state.fileViewState),
     });
   },
 
@@ -326,7 +363,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         // Keep at least one empty group
         const newId = generateId();
         newLayout = { type: 'leaf', id: newId, tabs: [], activeTabId: null };
-        set({ layout: newLayout, activeGroupId: newId, closedTabs });
+        set({
+          layout: newLayout,
+          activeGroupId: newId,
+          closedTabs,
+          fileViewState: pruneFileViewStateForOpenTabs(newLayout, state.fileViewState),
+        });
       } else {
         // Update activeGroupId if needed
         const groups = getAllGroups(cleaned);
@@ -335,6 +377,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           layout: cleaned,
           activeGroupId: activeGroupStillExists ? state.activeGroupId : groups[0]?.id || '',
           closedTabs,
+          fileViewState: pruneFileViewStateForOpenTabs(cleaned, state.fileViewState),
         });
       }
     }
@@ -547,18 +590,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   closeOtherTabs: (groupId, tabId) => {
-    set((state) => ({
-      layout: updateGroup(state.layout, groupId, (leaf) => ({
+    set((state) => {
+      const nextLayout = updateGroup(state.layout, groupId, (leaf) => ({
         ...leaf,
         tabs: leaf.tabs.filter((t) => t.id === tabId),
         activeTabId: tabId,
-      })),
-    }));
+      }));
+      return {
+        layout: nextLayout,
+        fileViewState: pruneFileViewStateForOpenTabs(nextLayout, state.fileViewState),
+      };
+    });
   },
 
   closeTabsToRight: (groupId, tabId) => {
-    set((state) => ({
-      layout: updateGroup(state.layout, groupId, (leaf) => {
+    set((state) => {
+      const nextLayout = updateGroup(state.layout, groupId, (leaf) => {
         const idx = leaf.tabs.findIndex((t) => t.id === tabId);
         const newTabs = leaf.tabs.slice(0, idx + 1);
         return {
@@ -568,18 +615,26 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             ? leaf.activeTabId
             : tabId,
         };
-      }),
-    }));
+      });
+      return {
+        layout: nextLayout,
+        fileViewState: pruneFileViewStateForOpenTabs(nextLayout, state.fileViewState),
+      };
+    });
   },
 
   closeAllTabs: (groupId) => {
-    set((state) => ({
-      layout: updateGroup(state.layout, groupId, (leaf) => ({
+    set((state) => {
+      const nextLayout = updateGroup(state.layout, groupId, (leaf) => ({
         ...leaf,
         tabs: [],
         activeTabId: null,
-      })),
-    }));
+      }));
+      return {
+        layout: nextLayout,
+        fileViewState: pruneFileViewStateForOpenTabs(nextLayout, state.fileViewState),
+      };
+    });
   },
 
   reopenClosedTab: () => {
@@ -743,7 +798,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setInsertSnippetFn: (fn) => set({ insertSnippet: fn }),
 
-  hydrateFileViewState: (viewState) => set({ fileViewState: viewState }),
+  hydrateFileViewState: (viewState) =>
+    set((state) => ({
+      fileViewState: pruneFileViewStateForOpenTabs(state.layout, viewState),
+    })),
 
   getTabViewState: (tab) => {
     const key = getTabViewStateKey(tab);

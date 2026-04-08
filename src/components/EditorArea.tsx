@@ -199,6 +199,8 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
   const monacoRef = useRef<typeof import('monaco-editor') | null>(null);
   const lastLocalContentRef = useRef<string | null>(null);
   const previousActiveTabRef = useRef<string | null>(activeTabId);
+  const isRestoringViewStateRef = useRef(false);
+  const restoreGuardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streakRef = useRef(0);
   const streakPauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streakCooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -217,18 +219,48 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
       };
 
       setTimeout(() => {
-        ed.setPosition({ lineNumber: viewState.line, column: viewState.column });
+        const model = ed.getModel();
+        const lineCount = model?.getLineCount() ?? viewState.line;
+        const safeLine = Math.max(1, Math.min(viewState.line, lineCount));
+        const maxColumn = model?.getLineMaxColumn(safeLine) ?? viewState.column;
+        const safeColumn = Math.max(1, Math.min(viewState.column, maxColumn));
+        isRestoringViewStateRef.current = true;
+        if (restoreGuardTimerRef.current) {
+          clearTimeout(restoreGuardTimerRef.current);
+        }
+
+        ed.setPosition({ lineNumber: safeLine, column: safeColumn });
 
         if (viewState.scrollTop > 0) {
           ed.setScrollTop(viewState.scrollTop);
         } else if (revealInCenter) {
-          ed.revealLineInCenter(viewState.line);
+          ed.revealLineInCenter(safeLine);
         } else {
-          ed.revealLine(viewState.line);
+          ed.revealLine(safeLine);
         }
+
+        setCursorPosition(safeLine, safeColumn);
+        restoreGuardTimerRef.current = setTimeout(() => {
+          isRestoringViewStateRef.current = false;
+          restoreGuardTimerRef.current = null;
+        }, 0);
       }, 0);
     },
-    [getTabViewState]
+    [getTabViewState, setCursorPosition]
+  );
+
+  const persistEditorViewState = useCallback(
+    (tab: FileTab | null) => {
+      const ed = editorRef.current;
+      if (!ed || !tab) return;
+
+      const pos = ed.getPosition();
+      if (pos) {
+        updateCursorPosition(groupId, tab.id, pos.lineNumber, pos.column);
+      }
+      updateScrollPosition(groupId, tab.id, ed.getScrollTop());
+    },
+    [groupId, updateCursorPosition, updateScrollPosition]
   );
 
   const stopStreakCooldown = useCallback(() => {
@@ -396,12 +428,14 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
       // Track cursor position for status bar and store
       editor.onDidChangeCursorPosition((e) => {
         setCursorPosition(e.position.lineNumber, e.position.column);
+        if (isRestoringViewStateRef.current) return;
         if (activeTab) {
           updateCursorPosition(groupId, activeTab.id, e.position.lineNumber, e.position.column);
         }
       });
 
       editor.onDidScrollChange((e) => {
+        if (isRestoringViewStateRef.current) return;
         if (activeTab) {
           updateScrollPosition(groupId, activeTab.id, e.scrollTop);
         }
@@ -502,6 +536,12 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
   }, [activeGroupId, groupId, insertSnippetIntoEditor, setInsertSnippetFn]);
 
   useEffect(() => {
+    return () => {
+      persistEditorViewState(activeTab);
+    };
+  }, [activeTab?.id, activeTab?.path, persistEditorViewState]);
+
+  useEffect(() => {
     if (!activeTabId) return;
     if (previousActiveTabRef.current && previousActiveTabRef.current !== activeTabId) {
       setEditorSwitching(true);
@@ -519,6 +559,9 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
       }
       if (streakCooldownRef.current) {
         clearInterval(streakCooldownRef.current);
+      }
+      if (restoreGuardTimerRef.current) {
+        clearTimeout(restoreGuardTimerRef.current);
       }
     };
   }, []);
@@ -665,9 +708,9 @@ function WelcomeScreen() {
     ['Ctrl+O', 'Open File'],
     ['Ctrl+Shift+P', 'Command Palette'],
     ['Ctrl+P', 'Quick Open'],
-    ['Ctrl+B', 'Toggle Sidebar'],
-    ['F5', 'Build & Run'],
+    ['Ctrl+B', 'Compile & Run'],
     ['Ctrl+Shift+B', 'Compile'],
+    ['Ctrl+K', 'Kill Process'],
   ] as const;
 
   return (

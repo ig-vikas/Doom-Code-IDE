@@ -13,27 +13,33 @@ pub struct ShellOutput {
 
 #[tauri::command]
 pub async fn run_shell_command(command: String, cwd: Option<String>) -> Result<ShellOutput, String> {
-    let mut cmd = std::process::Command::new("cmd");
-    cmd.args(["/C", &command]);
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.args(["/C", &command]);
 
-    if let Some(dir) = &cwd {
-        cmd.current_dir(dir);
-    }
+        if let Some(dir) = &cwd {
+            cmd.current_dir(dir);
+        }
 
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
 
-    let output = cmd.output().map_err(|e| format!("Failed to run command: {}", e))?;
-    
-    Ok(ShellOutput {
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-        exit_code: output.status.code(),
-        success: output.status.success(),
+        let output = cmd
+            .output()
+            .map_err(|e| format!("Failed to run command: {}", e))?;
+
+        Ok(ShellOutput {
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            exit_code: output.status.code(),
+            success: output.status.success(),
+        })
     })
+    .await
+    .map_err(|e| format!("Shell worker failed: {}", e))?
 }
 
 #[tauri::command]
@@ -52,22 +58,26 @@ pub async fn get_app_data_dir() -> Result<String, String> {
 
 #[tauri::command]
 pub async fn check_compiler() -> Result<String, String> {
-    let output = std::process::Command::new("g++")
-        .arg("--version")
-        .output()
-        .map_err(|e| format!("Compiler 'g++' not found: {}", e))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let output = std::process::Command::new("g++")
+            .arg("--version")
+            .output()
+            .map_err(|e| format!("Compiler 'g++' not found: {}", e))?;
 
-    let version = String::from_utf8_lossy(&output.stdout).to_string();
-    if version.is_empty() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        if stderr.is_empty() {
-            Err("Compiler 'g++' produced no output".to_string())
+        let version = String::from_utf8_lossy(&output.stdout).to_string();
+        if version.is_empty() {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            if stderr.is_empty() {
+                Err("Compiler 'g++' produced no output".to_string())
+            } else {
+                Ok(stderr)
+            }
         } else {
-            Ok(stderr)
+            Ok(version)
         }
-    } else {
-        Ok(version)
-    }
+    })
+    .await
+    .map_err(|e| format!("Compiler check worker failed: {}", e))?
 }
 
 #[tauri::command]

@@ -7,6 +7,14 @@ const PROFILES_STORAGE_KEY = 'doom-code-build-profiles';
 const PROFILES_VERSION_KEY = 'doom-code-build-profiles-v';
 const CURRENT_PROFILES_VERSION = 3;
 
+function migrateLegacyProfile(profile: BuildProfile): BuildProfile {
+  return {
+    ...profile,
+    id: profile.id === 'vikas' ? 'doom' : profile.id,
+    name: profile.name === 'Vikas' ? 'Doom' : profile.name,
+  };
+}
+
 function loadStoredProfiles(): BuildProfile[] | null {
   try {
     const version = localStorage.getItem(PROFILES_VERSION_KEY);
@@ -20,11 +28,14 @@ function loadStoredProfiles(): BuildProfile[] | null {
     if (raw) {
       const profiles = JSON.parse(raw) as BuildProfile[];
       // Ensure all profiles have mode field
-      return profiles.map(p => ({
-        ...p,
-        mode: p.mode || 'file',
-        customCommand: p.customCommand || undefined,
-      }));
+      return profiles.map((p) => {
+        const migrated = migrateLegacyProfile(p);
+        return {
+          ...migrated,
+          mode: migrated.mode || 'file',
+          customCommand: migrated.customCommand || undefined,
+        };
+      });
     }
   } catch {}
   return null;
@@ -85,10 +96,16 @@ interface BuildState {
 }
 
 const storedProfiles = loadStoredProfiles();
+const initialProfiles = storedProfiles ?? defaultBuildProfiles;
+const initialActiveProfileId =
+  initialProfiles.find((p) => p.id === 'doom')?.id ??
+  initialProfiles.find((p) => p.isDefault)?.id ??
+  initialProfiles[0]?.id ??
+  '';
 
 export const useBuildStore = create<BuildState>((set, get) => ({
-  profiles: storedProfiles ?? defaultBuildProfiles,
-  activeProfileId: 'vikas',
+  profiles: initialProfiles,
+  activeProfileId: initialActiveProfileId,
   compilerPath: 'g++',
   compiling: false,
   running: false,
@@ -170,7 +187,12 @@ export const useBuildStore = create<BuildState>((set, get) => ({
 
   resetProfiles: () => {
     saveStoredProfiles(defaultBuildProfiles);
-    set({ profiles: defaultBuildProfiles, activeProfileId: 'vikas' });
+    const defaultActiveProfileId =
+      defaultBuildProfiles.find((p) => p.id === 'doom')?.id ??
+      defaultBuildProfiles.find((p) => p.isDefault)?.id ??
+      defaultBuildProfiles[0]?.id ??
+      '';
+    set({ profiles: defaultBuildProfiles, activeProfileId: defaultActiveProfileId });
   },
 
   addTestCase: () => {

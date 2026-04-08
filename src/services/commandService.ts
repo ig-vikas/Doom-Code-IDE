@@ -6,10 +6,10 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useFileExplorerStore } from '../stores/fileExplorerStore';
 import { useNotificationStore } from '../stores/notificationStore';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { readFileContent, writeFileContent, readDirectory } from './fileService';
+import { readFileContent, writeFileContent, readDirectoryIfChanged } from './fileService';
 import { compileCpp, runExecutable, killRunningProcess } from './buildService';
 import { runShellCommand } from './systemService';
-import { saveConfig, loadConfig } from './configService';
+import { saveConfigIfChanged, loadConfig } from './configService';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { generateId, getFileName, getFileExtension, getLanguageFromExtension, getDirectory } from '../utils/fileUtils';
 
@@ -203,8 +203,8 @@ export function initializeCommands() {
         const parts = selected.replace(/\\/g, '/').split('/');
         const name = parts[parts.length - 1] || selected;
         store.setRootPath(selected, name);
-        const entries = await readDirectory(selected);
-        store.setTree(entries);
+        const dir = await readDirectoryIfChanged(selected, null, 10, 50000);
+        store.setTree(dir.entries ?? [], dir.signature);
         store.setLoading(false);
         useUIStore.getState().setSidebarView('explorer');
       }
@@ -586,6 +586,7 @@ async function doBuildAndRun(autoRun: boolean) {
   const buildState = useBuildStore.getState();
   const notify = useNotificationStore.getState();
   const ui = useUIStore.getState();
+  const buildSettings = useSettingsStore.getState().settings.build;
 
   const profile = buildState.getActiveProfile();
   const compiler = buildState.compilerPath || 'g++';
@@ -599,8 +600,8 @@ async function doBuildAndRun(autoRun: boolean) {
   const tab = group.tabs.find((t: any) => t.id === group.activeTabId);
   if (!tab) return;
 
-  // Auto-save before build
-  if (tab.path && tab.isModified) {
+  // Auto-save before build (configurable)
+  if (buildSettings.saveBeforeBuild && tab.path && tab.isModified) {
     try {
       useUIStore.getState().startSavingIndicator();
       await writeFileContent(tab.path, tab.content);
@@ -633,6 +634,9 @@ async function doBuildAndRun(autoRun: boolean) {
 
   useBuildStore.getState().setCompiling(true);
   ui.setBottomPanelVisible(true);
+  if (buildSettings.clearOutputBeforeBuild) {
+    emitTerminalOutput('\x1bc');
+  }
 
   emitTerminalOutput(`\x1b[36m> Building: ${fileName} [${profile.name}]\x1b[0m\r\n`);
 
@@ -640,7 +644,7 @@ async function doBuildAndRun(autoRun: boolean) {
   emitTerminalOutput(`\x1b[2m$ ${compiler} ${flags} "${sourcePath}" -o "${exePath}"\x1b[0m\r\n`);
 
   try {
-    const compileResult = await compileCpp(sourcePath, exePath, profile.flags);
+    const compileResult = await compileCpp(sourcePath, exePath, profile.flags, compiler);
     const diagnostics = countDiagnostics(compileResult.stderr);
     useBuildStore.getState().setDiagnostics(
       diagnostics.warnings,
@@ -655,7 +659,8 @@ async function doBuildAndRun(autoRun: boolean) {
       emitTerminalOutput('\r\n');
       return;
     }
-    emitTerminalOutput(`\x1b[32m✓ Compiled successfully (${compileResult.durationMs}ms)\x1b[0m\r\n`);
+    const compileSuffix = buildSettings.showExecutionTime ? ` (${compileResult.durationMs}ms)` : '';
+    emitTerminalOutput(`\x1b[32m✓ Compiled successfully${compileSuffix}\x1b[0m\r\n`);
   } catch (err) {
     useBuildStore.getState().setCompiling(false);
     useBuildStore.getState().setDiagnostics(0, 1);
@@ -716,7 +721,8 @@ async function doBuildAndRun(autoRun: boolean) {
         useBuildStore.getState().setTestVerdict(tc.id, verdict, result.stdout, elapsed);
 
         const color = verdict === 'accepted' ? '32' : verdict === 'wrong-answer' ? '31' : verdict === 'time-limit-exceeded' ? '33' : '35';
-        emitTerminalOutput(`\x1b[${color}m  ${tc.name}: ${verdict.toUpperCase()} (${elapsed}ms)\x1b[0m\r\n`);
+        const elapsedSuffix = buildSettings.showExecutionTime ? ` (${elapsed}ms)` : '';
+        emitTerminalOutput(`\x1b[${color}m  ${tc.name}: ${verdict.toUpperCase()}${elapsedSuffix}\x1b[0m\r\n`);
       } catch (err) {
         if (useBuildStore.getState().killed) break;
         useBuildStore.getState().setTestVerdict(tc.id, 'runtime-error', String(err));
@@ -732,8 +738,6 @@ async function doBuildAndRun(autoRun: boolean) {
       useBuildStore.getState().setBuildVisualState('idle');
     }
     emitTerminalOutput('\r\n');
-    // Refresh open files after test runs
-    await refreshAllOpenFiles();
   } else if (mode === 'custom') {
     // Custom mode: run user-defined command with placeholders
     const customCmd = (profile.customCommand || '')
@@ -771,7 +775,8 @@ async function doBuildAndRun(autoRun: boolean) {
         if (result.stdout) emitTerminalOutput(result.stdout.replace(/\n/g, '\r\n'));
       }
       emitTerminalOutput('\r\n');
-      await refreshAllOpenFiles();
+      const touchedPaths = extractLikelyOutputPathsFromCommand(customCmd, fileDir);
+      await refreshOpenFiles(touchedPaths.length > 0 ? touchedPaths : [sourcePath]);
     } catch (err) {
       useBuildStore.getState().setRunning(false);
       if (!useBuildStore.getState().killed) {
@@ -783,7 +788,7 @@ async function doBuildAndRun(autoRun: boolean) {
       }
     }
   } else {
-    // File mode (Vikas): run with input.txt > output.txt
+    // File mode (Doom): run with input.txt > output.txt
     const runCmd = `${baseName}.exe < input.txt > output.txt`;
     emitTerminalOutput(`\x1b[2m$ ${runCmd}\x1b[0m\r\n`);
 
@@ -800,7 +805,7 @@ async function doBuildAndRun(autoRun: boolean) {
         emitTerminalOutput(`\x1b[32m✓ Run completed — see output.txt\x1b[0m\r\n`);
 
         // Refresh all open files — picks up output.txt and any other externally changed files
-        await refreshAllOpenFiles();
+        await refreshOpenFiles([`${fileDir}\\output.txt`]);
       } else {
         useBuildStore.getState().pulseBuildVisualState('failure');
         notify.error('Run failed');
@@ -831,7 +836,9 @@ async function doBuildAndRunSingleTest(index: number) {
   const buildState = useBuildStore.getState();
   const notify = useNotificationStore.getState();
   const ui = useUIStore.getState();
+  const buildSettings = useSettingsStore.getState().settings.build;
   const profile = buildState.getActiveProfile();
+  const compiler = buildState.compilerPath || 'g++';
 
   const group = findLeaf(editorState.layout, editorState.activeGroupId);
   if (!group || group.type !== 'leaf' || !group.activeTabId) {
@@ -845,7 +852,7 @@ async function doBuildAndRunSingleTest(index: number) {
     return;
   }
 
-  if (tab.isModified) {
+  if (buildSettings.saveBeforeBuild && tab.isModified) {
     try {
       useUIStore.getState().startSavingIndicator();
       await writeFileContent(tab.path, tab.content);
@@ -877,11 +884,14 @@ async function doBuildAndRunSingleTest(index: number) {
 
   useBuildStore.getState().setCompiling(true);
   ui.setBottomPanelVisible(true);
+  if (buildSettings.clearOutputBeforeBuild) {
+    emitTerminalOutput('\x1bc');
+  }
 
   emitTerminalOutput(`\x1b[36m> Building: ${fileName} [${profile.name}] — ${tc.name}\x1b[0m\r\n`);
 
   try {
-    const compileResult = await compileCpp(sourcePath, exePath, profile.flags);
+    const compileResult = await compileCpp(sourcePath, exePath, profile.flags, compiler);
     const diagnostics = countDiagnostics(compileResult.stderr);
     useBuildStore.getState().setDiagnostics(
       diagnostics.warnings,
@@ -923,7 +933,8 @@ async function doBuildAndRunSingleTest(index: number) {
         useBuildStore.getState().pulseBuildVisualState('failure');
       }
       const color = verdict === 'accepted' ? '32' : verdict === 'wrong-answer' ? '31' : verdict === 'time-limit-exceeded' ? '33' : '35';
-      emitTerminalOutput(`\x1b[${color}m  ${tc.name}: ${verdict.toUpperCase()} (${result.durationMs}ms)\x1b[0m\r\n\r\n`);
+      const elapsedSuffix = buildSettings.showExecutionTime ? ` (${result.durationMs}ms)` : '';
+      emitTerminalOutput(`\x1b[${color}m  ${tc.name}: ${verdict.toUpperCase()}${elapsedSuffix}\x1b[0m\r\n\r\n`);
     }
   } catch (err) {
     if (!useBuildStore.getState().killed) {
@@ -958,11 +969,19 @@ export function emitTerminalOutput(data: string) {
 // ======================== REFRESH OPEN FILES ========================
 // Re-reads all open files from disk and updates tabs without marking modified.
 // This handles files written by external programs (build output, etc).
-export async function refreshAllOpenFiles() {
+export async function refreshOpenFiles(paths?: string[] | null) {
+  const narrowedPaths =
+    paths && paths.length > 0
+      ? new Set(paths.map((p) => p.replace(/\//g, '\\').toLowerCase()))
+      : null;
+
   const edState = useEditorStore.getState();
   const allGroups = getAllLeaves(edState.layout);
   for (const g of allGroups) {
     for (const tab of g.tabs) {
+      if (!tab.path) continue;
+      const normalized = tab.path.replace(/\//g, '\\').toLowerCase();
+      if (narrowedPaths && !narrowedPaths.has(normalized)) continue;
       if (tab.path && !tab.isModified) {
         try {
           const content = await readFileContent(tab.path);
@@ -975,6 +994,27 @@ export async function refreshAllOpenFiles() {
       }
     }
   }
+}
+
+export async function refreshAllOpenFiles() {
+  await refreshOpenFiles();
+}
+
+function extractLikelyOutputPathsFromCommand(command: string, cwd: string): string[] {
+  const paths: string[] = [];
+  const redirectionPattern = /(?:^|\s)>{1,2}\s*(?:"([^"]+)"|([^\s]+))/g;
+  let match: RegExpExecArray | null;
+  while ((match = redirectionPattern.exec(command)) !== null) {
+    const rawPath = (match[1] ?? match[2] ?? '').trim();
+    if (!rawPath) continue;
+    const normalized = rawPath.replace(/\//g, '\\');
+    const fullPath =
+      /^[a-zA-Z]:\\/.test(normalized) || normalized.startsWith('\\\\')
+        ? normalized
+        : `${cwd}\\${normalized}`;
+    paths.push(fullPath);
+  }
+  return paths;
 }
 
 // ======================== SESSION PERSISTENCE ========================
@@ -1010,7 +1050,7 @@ export async function saveSession() {
   };
 
   try {
-    await saveConfig('session.json', session);
+    await saveConfigIfChanged('session.json', session);
   } catch {}
 }
 
@@ -1037,15 +1077,15 @@ export async function restoreSession() {
       const fe = useFileExplorerStore.getState();
       fe.setRootPath(session.folderPath, session.folderName);
       try {
-        const entries = await readDirectory(session.folderPath);
-        fe.setTree(entries);
+        const dir = await readDirectoryIfChanged(session.folderPath, null, 10, 50000);
+        fe.setTree(dir.entries ?? [], dir.signature);
       } catch {}
     }
 
     // Restore editor tabs — reload content from disk for saved files
     if (session.layout) {
       const restoredLayout = await restoreLayoutContent(session.layout);
-      const restoredFileViewState = session.fileViewState ?? extractFileViewStateFromLayout(restoredLayout);
+      const restoredFileViewState = mergeFileViewStateWithLayout(restoredLayout, session.fileViewState);
       useEditorStore.setState({
         layout: restoredLayout,
         activeGroupId: session.activeGroupId || (restoredLayout as any).id,
@@ -1114,3 +1154,22 @@ function extractFileViewStateFromLayout(node: any): Record<string, { line: numbe
 
   return {};
 }
+
+function mergeFileViewStateWithLayout(
+  layout: any,
+  serialized: Record<string, { line: number; column: number; scrollTop: number }> | undefined
+): Record<string, { line: number; column: number; scrollTop: number }> {
+  const layoutDerived = extractFileViewStateFromLayout(layout);
+  if (!serialized) return layoutDerived;
+
+  return Object.entries(layoutDerived).reduce(
+    (acc, [key, fallback]) => {
+      acc[key] = serialized[key] ?? fallback;
+      return acc;
+    },
+    {} as Record<string, { line: number; column: number; scrollTop: number }>
+  );
+}
+
+
+

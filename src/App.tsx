@@ -10,7 +10,7 @@ import Notifications from './components/Notifications';
 import SettingsPanel from './components/SettingsPanel';
 import StartupOverlay from './components/StartupOverlay';
 import BuildProgressBar from './components/BuildProgressBar';
-import { useUIStore, useThemeStore, useSettingsStore, useEditorSchemeStore, useEditorStore } from './stores';
+import { useUIStore, useThemeStore, useSettingsStore, useEditorSchemeStore, useEditorStore, useBuildStore } from './stores';
 import { useGlobalKeybindings } from './hooks/useKeybindings';
 import { useResizable } from './hooks/useResizable';
 import { loadConfig } from './services/configService';
@@ -200,6 +200,9 @@ export default function App() {
             }
             if (settings.ui?.editorColorScheme) {
               useEditorSchemeStore.getState().setScheme(settings.ui.editorColorScheme);
+            }
+            if (settings.build?.compilerPath) {
+              useBuildStore.getState().setCompilerPath(settings.build.compilerPath);
             }
           }
         } catch {

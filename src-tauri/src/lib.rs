@@ -40,6 +40,7 @@ pub fn run() {
             // Folder operations
             commands::folder_ops::read_directory,
             commands::folder_ops::create_directory,
+            commands::folder_ops::get_directory_snapshot,
             // Build
             commands::build::compile_cpp,
             commands::build::run_executable,

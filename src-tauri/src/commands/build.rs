@@ -1,7 +1,9 @@
-use serde::{Deserialize, Serialize};
-use std::process::Command;
-use std::time::Instant;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -35,26 +37,37 @@ pub struct RunResult {
 }
 
 fn parse_compile_errors(stderr: &str) -> Vec<CompileError> {
-    let re = Regex::new(r"(?m)^(.+?):(\d+):(\d+):\s*(error|warning|note|fatal error):\s*(.+)$").unwrap();
+    static COMPILE_ERROR_RE: OnceLock<Regex> = OnceLock::new();
+    let re = COMPILE_ERROR_RE.get_or_init(|| {
+        Regex::new(r"(?m)^(.+?):(\d+):(\d+):\s*(error|warning|note|fatal error):\s*(.+)$")
+            .expect("compile error regex should be valid")
+    });
+
     let mut errors = Vec::new();
-
     for cap in re.captures_iter(stderr) {
-        let file = cap[1].to_string();
-        let line: u32 = cap[2].parse().unwrap_or(0);
-        let column: u32 = cap[3].parse().unwrap_or(0);
-        let severity = cap[4].to_string();
-        let message = cap[5].to_string();
-
         errors.push(CompileError {
-            file,
-            line,
-            column,
-            severity,
-            message,
+            file: cap[1].to_string(),
+            line: cap[2].parse().unwrap_or(0),
+            column: cap[3].parse().unwrap_or(0),
+            severity: cap[4].to_string(),
+            message: cap[5].to_string(),
         });
     }
 
     errors
+}
+
+fn compiler_name_or_default(compiler_path: Option<String>) -> String {
+    compiler_path
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "g++".to_string())
+}
+
+fn maybe_log_duration(label: &str, started: Instant) {
+    if std::env::var_os("DOOM_CODE_METRICS").is_some() {
+        eprintln!("[metrics] {}={}ms", label, started.elapsed().as_millis());
+    }
 }
 
 #[tauri::command]
@@ -62,66 +75,81 @@ pub async fn compile_cpp(
     source_path: String,
     output_path: String,
     flags: Vec<String>,
+    compiler_path: Option<String>,
     state: tauri::State<'_, crate::state::AppState>,
 ) -> Result<CompileResult, String> {
-    // Kill any leftover running process that might be locking the exe
-    {
-        let mut proc = state.running_process.lock().map_err(|e| e.to_string())?;
-        if let Some((pid, ref exe)) = proc.take() {
-            super::process::force_kill_pid(pid);
-            super::process::force_kill_by_name(exe);
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            super::process::force_delete_exe(exe);
+    // Kill only the known previously-started process, then attempt to delete stale executable.
+    if let Some(running) = super::process::take_running_process(&state)? {
+        super::process::terminate_and_wait(running.pid, Duration::from_millis(1200));
+        super::process::try_remove_file_with_backoff(
+            &running.exec_path,
+            18,
+            Duration::from_millis(35),
+        );
+    }
+    super::process::try_remove_file_with_backoff(
+        &output_path,
+        18,
+        Duration::from_millis(30),
+    );
+
+    let compiler = compiler_name_or_default(compiler_path);
+    let total_started = Instant::now();
+
+    let compile_result = tauri::async_runtime::spawn_blocking(move || {
+        let started = Instant::now();
+        let mut cmd = Command::new(&compiler);
+        cmd.args(&flags)
+            .arg(&source_path)
+            .arg("-o")
+            .arg(&output_path);
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
-    }
 
-    // Also kill any process matching the target exe name and delete it
-    super::process::force_kill_by_name(&output_path);
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    super::process::force_delete_exe(&output_path);
+        let output = cmd.output().map_err(|e| {
+            format!(
+                "Failed to execute compiler '{}': {}. Make sure it exists and is in PATH.",
+                compiler, e
+            )
+        })?;
 
-    let start = Instant::now();
+        let duration_ms = started.elapsed().as_millis() as u64;
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        let parsed = parse_compile_errors(&stderr);
 
-    let mut cmd = Command::new("g++");
-    cmd.args(&flags)
-        .arg(&source_path)
-        .arg("-o")
-        .arg(&output_path);
+        let mut warnings = Vec::new();
+        let mut actual_errors = Vec::new();
+        for item in parsed {
+            if item.severity == "warning" {
+                warnings.push(format!(
+                    "{}:{}:{}: {}",
+                    item.file, item.line, item.column, item.message
+                ));
+            } else if item.severity != "note" {
+                actual_errors.push(item);
+            }
+        }
 
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
-
-    let output = cmd.output().map_err(|e| {
-        format!(
-            "Failed to execute compiler 'g++': {}. Make sure g++ is installed and in PATH.",
-            e
-        )
-    })?;
-
-    let duration_ms = start.elapsed().as_millis() as u64;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let errors = parse_compile_errors(&stderr);
-    let warnings: Vec<String> = errors.iter()
-        .filter(|e| e.severity == "warning")
-        .map(|e| format!("{}:{}:{}: {}", e.file, e.line, e.column, e.message))
-        .collect();
-    let actual_errors: Vec<CompileError> = errors.into_iter()
-        .filter(|e| e.severity != "warning" && e.severity != "note")
-        .collect();
-
-    Ok(CompileResult {
-        success: output.status.success(),
-        stdout,
-        stderr: stderr.clone(),
-        duration_ms,
-        errors: actual_errors,
-        warnings,
-        raw_output: stderr,
+        Ok::<CompileResult, String>(CompileResult {
+            success: output.status.success(),
+            stdout,
+            stderr: stderr.clone(),
+            duration_ms,
+            errors: actual_errors,
+            warnings,
+            raw_output: stderr,
+        })
     })
+    .await
+    .map_err(|e| format!("Compile worker failed: {}", e))??;
+
+    maybe_log_duration("compile_cpp.total", total_started);
+    Ok(compile_result)
 }
 
 #[tauri::command]
@@ -132,10 +160,8 @@ pub async fn run_executable(
     state: tauri::State<'_, crate::state::AppState>,
 ) -> Result<RunResult, String> {
     use std::io::Write;
-    use std::process::Stdio;
 
-    let start = Instant::now();
-
+    let started = Instant::now();
     let mut cmd = Command::new(&exec_path);
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -147,63 +173,56 @@ pub async fn run_executable(
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
 
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| format!("Failed to run executable '{}': {}", exec_path, e))?;
+    let pid = child.id();
 
-    let child_pid = child.id();
+    super::process::set_running_process(
+        &state,
+        crate::state::RunningProcess {
+            pid,
+            exec_path: exec_path.clone(),
+        },
+    )?;
 
-    // Store PID and exe path
-    {
-        let mut proc = state.running_process.lock().map_err(|e| e.to_string())?;
-        *proc = Some((child_pid, exec_path.clone()));
-    }
-
-    // Write stdin
     if let Some(mut stdin_pipe) = child.stdin.take() {
         let _ = stdin_pipe.write_all(stdin.as_bytes());
-        drop(stdin_pipe);
     }
 
-    // Wait with a real timeout using a separate thread
-    let timeout = std::time::Duration::from_millis(timeout_ms);
-    let handle = std::thread::spawn(move || child.wait_with_output());
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(child.wait_with_output());
+    });
 
-    let result = loop {
-        if handle.is_finished() {
-            break match handle.join() {
-                Ok(Ok(output)) => {
-                    let duration_ms = start.elapsed().as_millis() as u64;
-                    Ok(RunResult {
-                        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                        exit_code: output.status.code(),
-                        duration_ms,
-                        timed_out: false,
-                    })
-                }
-                Ok(Err(e)) => Err(format!("Process error: {}", e)),
-                Err(_) => Err("Thread panic during execution".to_string()),
-            };
-        }
-        if start.elapsed() > timeout {
-            // Kill the process on timeout
-            super::process::force_kill_pid(child_pid);
-            break Ok(RunResult {
+    let timeout = Duration::from_millis(timeout_ms);
+    let result = match rx.recv_timeout(timeout) {
+        Ok(wait_result) => match wait_result {
+            Ok(output) => Ok(RunResult {
+                stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                exit_code: output.status.code(),
+                duration_ms: started.elapsed().as_millis() as u64,
+                timed_out: false,
+            }),
+            Err(e) => Err(format!("Process error: {}", e)),
+        },
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            super::process::terminate_and_wait(pid, Duration::from_millis(1200));
+            Ok(RunResult {
                 stdout: String::new(),
                 stderr: "Time Limit Exceeded".to_string(),
                 exit_code: None,
                 duration_ms: timeout_ms,
                 timed_out: true,
-            });
+            })
         }
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            Err("Runner thread disconnected unexpectedly".to_string())
+        }
     };
 
-    // Clear running process
-    {
-        let mut proc = state.running_process.lock().map_err(|e| e.to_string())?;
-        *proc = None;
-    }
-
+    let _ = super::process::clear_running_process(&state, pid);
+    maybe_log_duration("run_executable.total", started);
     result
 }

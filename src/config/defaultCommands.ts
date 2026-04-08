@@ -49,16 +49,14 @@ export const defaultCommands: CommandDefinition[] = [
   { id: 'view.zoomReset', label: 'Reset Zoom', category: 'View', keybinding: 'Ctrl+0' },
 
   // Build
-  { id: 'build.compileAndRun', label: 'Compile & Run', category: 'Build', keybinding: 'F5' },
-  { id: 'build.compileOnly', label: 'Compile Only', category: 'Build', keybinding: 'F7' },
+  { id: 'build.compileAndRun', label: 'Compile & Run', category: 'Build', keybinding: 'Ctrl+B' },
+  { id: 'build.compileOnly', label: 'Compile Only', category: 'Build', keybinding: 'Ctrl+Shift+B' },
   { id: 'build.runOnly', label: 'Run Only', category: 'Build', keybinding: 'Ctrl+F5' },
-  { id: 'build.build', label: 'Build', category: 'Build', keybinding: 'Ctrl+B' },
-  { id: 'build.killProcess', label: 'Kill Process', category: 'Build', keybinding: 'Ctrl+Break' },
+  { id: 'build.build', label: 'Build', category: 'Build' },
+  { id: 'build.killProcess', label: 'Kill Process', category: 'Build', keybinding: 'Ctrl+K' },
   { id: 'build.runAllTestCases', label: 'Run All Test Cases', category: 'Build', keybinding: 'Ctrl+Alt+T' },
 
   // Settings
   { id: 'settings.openSettings', label: 'Open Settings', category: 'Settings', keybinding: 'Ctrl+,' },
-  { id: 'settings.selectTheme', label: 'Select Theme', category: 'Settings', keybinding: 'Ctrl+K Ctrl+T' },
-  { id: 'settings.openKeybindings', label: 'Open Keybindings', category: 'Settings', keybinding: 'Ctrl+K Ctrl+S' },
   { id: 'about.show', label: 'About Doom Code', category: 'Settings' },
 ];

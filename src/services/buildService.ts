@@ -4,9 +4,15 @@ import type { CompileResult, RunResult } from '../types';
 export async function compileCpp(
   sourcePath: string,
   outputPath: string,
-  flags: string[]
+  flags: string[],
+  compilerPath?: string
 ): Promise<CompileResult> {
-  return invoke<CompileResult>('compile_cpp', { sourcePath, outputPath, flags });
+  return invoke<CompileResult>('compile_cpp', {
+    sourcePath,
+    outputPath,
+    flags,
+    compilerPath: compilerPath ?? null,
+  });
 }
 
 export async function runExecutable(

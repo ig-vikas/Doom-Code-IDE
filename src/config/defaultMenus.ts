@@ -56,14 +56,11 @@ export const defaultMenus: MenuDefinition[] = [
   {
     label: 'Build',
     submenu: [
-      { id: 'build-compilerun', label: 'Compile & Run', command: 'build.compileAndRun', keybinding: 'F5' },
-      { id: 'build-compile', label: 'Compile Only', command: 'build.compileOnly', keybinding: 'F7' },
+      { id: 'build-compilerun', label: 'Compile & Run', command: 'build.compileAndRun', keybinding: 'Ctrl+B' },
+      { id: 'build-compile', label: 'Compile Only', command: 'build.compileOnly', keybinding: 'Ctrl+Shift+B' },
       { id: 'build-run', label: 'Run Only', command: 'build.runOnly', keybinding: 'Ctrl+F5' },
       { type: 'separator' },
-      { id: 'build-kill', label: 'Kill Process', command: 'build.killProcess', keybinding: 'Ctrl+Break' },
-      { type: 'separator' },
-      { id: 'build-nexterr', label: 'Next Error', command: 'build.nextError', keybinding: 'F4' },
-      { id: 'build-preverr', label: 'Previous Error', command: 'build.previousError', keybinding: 'Shift+F4' },
+      { id: 'build-kill', label: 'Kill Process', command: 'build.killProcess', keybinding: 'Ctrl+K' },
       { type: 'separator' },
       { id: 'build-testall', label: 'Run All Test Cases', command: 'build.runAllTestCases', keybinding: 'Ctrl+Alt+T' },
     ],
@@ -72,8 +69,6 @@ export const defaultMenus: MenuDefinition[] = [
     label: 'Settings',
     submenu: [
       { id: 'settings-open', label: 'Settings', command: 'settings.openSettings', keybinding: 'Ctrl+,' },
-      { id: 'settings-keys', label: 'Keyboard Shortcuts', command: 'settings.openKeybindings', keybinding: 'Ctrl+K Ctrl+S' },
-      { id: 'settings-theme', label: 'Color Theme', command: 'settings.selectTheme', keybinding: 'Ctrl+K Ctrl+T' },
       { type: 'separator' },
       { id: 'settings-about', label: 'About Doom Code', command: 'about.show' },
     ],

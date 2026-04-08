@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useSettingsStore, useThemeStore, useUIStore, useBuildStore, useKeybindingStore, useEditorSchemeStore } from '../stores';
 import { useSolveCounterStore } from '../stores/solveCounterStore';
-import { saveConfig } from '../services/configService';
+import { saveConfigIfChanged } from '../services/configService';
 import type { AppSettings } from '../types';
 import { VscClose, VscEdit } from 'react-icons/vsc';
 import { defaultKeybindings } from '../config/defaultKeybindings';
@@ -29,7 +29,7 @@ export default function SettingsPanel() {
   const handleClose = useCallback(() => {
     setSettingsOpen(false);
     // Auto-save settings
-    saveConfig('settings.json', settings).catch(() => {});
+    saveConfigIfChanged('settings.json', settings).catch(() => {});
   }, [setSettingsOpen, settings]);
 
   return (
@@ -445,6 +445,7 @@ function BuildSettings() {
   const profiles = useBuildStore((s) => s.profiles);
   const activeProfileId = useBuildStore((s) => s.activeProfileId);
   const setActiveProfile = useBuildStore((s) => s.setActiveProfile);
+  const setCompilerPath = useBuildStore((s) => s.setCompilerPath);
 
   return (
     <div>
@@ -455,7 +456,10 @@ function BuildSettings() {
             type="text"
             className="settings-select"
             value={settings.compilerPath}
-            onChange={(e) => updateBuild({ compilerPath: e.target.value })}
+            onChange={(e) => {
+              updateBuild({ compilerPath: e.target.value });
+              setCompilerPath(e.target.value);
+            }}
             style={{ minWidth: 160 }}
           />
         </SettingRow>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useRef, KeyboardEvent } from 'react';
-import { useFileExplorerStore, useEditorStore, useNotificationStore } from '../stores';
-import { readDirectory, readFileContent, createNewFile, createDirectory, renamePath, deletePath } from '../services/fileService';
+import { useFileExplorerStore, useEditorStore } from '../stores';
+import { readDirectoryIfChanged, readFileContent, createNewFile, createDirectory, renamePath } from '../services/fileService';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { FileNode } from '../types';
 import {
@@ -19,8 +19,10 @@ export default function FileExplorer() {
   const rootPath = useFileExplorerStore((s) => s.rootPath);
   const rootName = useFileExplorerStore((s) => s.rootName);
   const tree = useFileExplorerStore((s) => s.tree);
+  const treeSignature = useFileExplorerStore((s) => s.treeSignature);
   const setRootPath = useFileExplorerStore((s) => s.setRootPath);
   const setTree = useFileExplorerStore((s) => s.setTree);
+  const setTreeSignature = useFileExplorerStore((s) => s.setTreeSignature);
   const collapseAll = useFileExplorerStore((s) => s.collapseAll);
   const loading = useFileExplorerStore((s) => s.loading);
   const setLoading = useFileExplorerStore((s) => s.setLoading);
@@ -38,8 +40,8 @@ export default function FileExplorer() {
         const parts = selected.replace(/\\/g, '/').split('/');
         const name = parts[parts.length - 1] || selected;
         setRootPath(selected, name);
-        const entries = await readDirectory(selected);
-        setTree(entries);
+        const dir = await readDirectoryIfChanged(selected, null, 10, 50000);
+        setTree(dir.entries ?? [], dir.signature);
         setLoading(false);
       }
     } catch (err) {
@@ -52,13 +54,17 @@ export default function FileExplorer() {
     if (!rootPath) return;
     setLoading(true);
     try {
-      const entries = await readDirectory(rootPath);
-      setTree(entries);
+      const dir = await readDirectoryIfChanged(rootPath, treeSignature, 10, 50000);
+      if (dir.changed && dir.entries) {
+        setTree(dir.entries, dir.signature);
+      } else {
+        setTreeSignature(dir.signature);
+      }
     } catch (err) {
       console.error('Failed to refresh:', err);
     }
     setLoading(false);
-  }, [rootPath, setTree, setLoading]);
+  }, [rootPath, setTree, setLoading, treeSignature, setTreeSignature]);
 
   const handleNewFile = useCallback(() => {
     if (rootPath) {

@@ -11,8 +11,8 @@ export const defaultBuildProfiles: BuildProfile[] = [
     mode: 'tc',
   },
   {
-    id: 'vikas',
-    name: 'Vikas',
+    id: 'doom',
+    name: 'Doom',
     standard: 'c++17',
     flags: ['-std=c++17', '-O2', '-DLOCAL'],
     timeLimit: 5000,

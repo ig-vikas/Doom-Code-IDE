@@ -103,14 +103,10 @@ export const defaultKeybindings: Keybinding[] = [
   { id: 'kb-fold-5', key: 'ctrl+k ctrl+5', command: 'fold.foldLevel5', label: 'Fold Level 5' },
 
   // BUILD
-  { id: 'kb-build-run', key: 'f5', command: 'build.compileAndRun', label: 'Compile & Run' },
-  { id: 'kb-build-compile', key: 'f7', command: 'build.compileOnly', label: 'Compile Only' },
+  { id: 'kb-build-run', key: 'ctrl+b', command: 'build.compileAndRun', label: 'Compile & Run' },
+  { id: 'kb-build-compile', key: 'ctrl+shift+b', command: 'build.compileOnly', label: 'Compile Only' },
   { id: 'kb-build-runonly', key: 'ctrl+f5', command: 'build.runOnly', label: 'Run Only' },
-  { id: 'kb-build-build', key: 'ctrl+b', command: 'build.build', label: 'Build' },
-  { id: 'kb-build-buildwith', key: 'ctrl+shift+b', command: 'build.compileAndRun', label: 'Compile & Run' },
-  { id: 'kb-build-kill', key: 'ctrl+break', command: 'build.killProcess', label: 'Kill Process' },
-  { id: 'kb-build-nexterr', key: 'f4', command: 'build.nextError', label: 'Next Error' },
-  { id: 'kb-build-preverr', key: 'shift+f4', command: 'build.previousError', label: 'Previous Error' },
+  { id: 'kb-build-kill', key: 'ctrl+k', command: 'build.killProcess', label: 'Kill Process' },
   { id: 'kb-build-testall', key: 'ctrl+alt+t', command: 'build.runAllTestCases', label: 'Run All Test Cases' },
   { id: 'kb-build-tc1', key: 'ctrl+alt+1', command: 'build.runTestCase1', label: 'Run Test Case 1' },
   { id: 'kb-build-tc2', key: 'ctrl+alt+2', command: 'build.runTestCase2', label: 'Run Test Case 2' },
@@ -118,6 +114,4 @@ export const defaultKeybindings: Keybinding[] = [
 
   // SETTINGS
   { id: 'kb-settings-open', key: 'ctrl+,', command: 'settings.openSettings', label: 'Open Settings' },
-  { id: 'kb-settings-theme', key: 'ctrl+k ctrl+t', command: 'settings.selectTheme', label: 'Select Theme' },
-  { id: 'kb-settings-keys', key: 'ctrl+k ctrl+s', command: 'settings.openKeybindings', label: 'Open Keybindings' },
 ];

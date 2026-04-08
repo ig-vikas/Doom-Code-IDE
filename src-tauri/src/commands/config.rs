@@ -15,15 +15,19 @@ fn get_config_dir() -> Result<PathBuf, String> {
 
 #[tauri::command]
 pub async fn load_config(filename: String) -> Result<String, String> {
-    let config_dir = get_config_dir()?;
-    let config_path = config_dir.join(&filename);
+    tauri::async_runtime::spawn_blocking(move || {
+        let config_dir = get_config_dir()?;
+        let config_path = config_dir.join(&filename);
 
-    if config_path.exists() {
-        fs::read_to_string(&config_path)
-            .map_err(|e| format!("Failed to read config '{}': {}", filename, e))
-    } else {
-        Ok(String::new())
-    }
+        if config_path.exists() {
+            fs::read_to_string(&config_path)
+                .map_err(|e| format!("Failed to read config '{}': {}", filename, e))
+        } else {
+            Ok(String::new())
+        }
+    })
+    .await
+    .map_err(|e| format!("Config load worker failed: {}", e))?
 }
 
 #[tauri::command]
@@ -31,14 +35,18 @@ pub async fn save_config(
     filename: String,
     data: String,
 ) -> Result<(), String> {
-    let config_dir = get_config_dir()?;
-    let config_path = config_dir.join(&filename);
+    tauri::async_runtime::spawn_blocking(move || {
+        let config_dir = get_config_dir()?;
+        let config_path = config_dir.join(&filename);
 
-    if let Some(parent) = config_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create config directory: {}", e))?;
-    }
+        if let Some(parent) = config_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create config directory: {}", e))?;
+        }
 
-    fs::write(&config_path, &data)
-        .map_err(|e| format!("Failed to save config '{}': {}", filename, e))
+        fs::write(&config_path, &data)
+            .map_err(|e| format!("Failed to save config '{}': {}", filename, e))
+    })
+    .await
+    .map_err(|e| format!("Config save worker failed: {}", e))?
 }

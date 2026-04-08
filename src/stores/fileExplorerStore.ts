@@ -5,6 +5,7 @@ interface FileExplorerState {
   rootPath: string | null;
   rootName: string;
   tree: FileNode[];
+  treeSignature: string | null;
   expandedDirs: Set<string>;
   selectedPath: string | null;
   renamingPath: string | null;
@@ -13,7 +14,8 @@ interface FileExplorerState {
   loading: boolean;
 
   setRootPath: (path: string, name: string) => void;
-  setTree: (tree: FileNode[]) => void;
+  setTree: (tree: FileNode[], signature?: string | null) => void;
+  setTreeSignature: (signature: string | null) => void;
   toggleDir: (path: string) => void;
   expandDir: (path: string) => void;
   collapseDir: (path: string) => void;
@@ -33,6 +35,7 @@ export const useFileExplorerStore = create<FileExplorerState>((set, get) => ({
   rootPath: null,
   rootName: '',
   tree: [],
+  treeSignature: null,
   expandedDirs: new Set<string>(),
   selectedPath: null,
   renamingPath: null,
@@ -40,9 +43,15 @@ export const useFileExplorerStore = create<FileExplorerState>((set, get) => ({
   creatingType: null,
   loading: false,
 
-  setRootPath: (path, name) => set({ rootPath: path, rootName: name }),
+  setRootPath: (path, name) => set({ rootPath: path, rootName: name, treeSignature: null }),
 
-  setTree: (tree) => set({ tree }),
+  setTree: (tree, signature) =>
+    set((state) => ({
+      tree,
+      treeSignature: signature !== undefined ? signature : state.treeSignature,
+    })),
+
+  setTreeSignature: (signature) => set({ treeSignature: signature }),
 
   toggleDir: (path) => {
     const expanded = new Set(get().expandedDirs);

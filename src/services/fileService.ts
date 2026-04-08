@@ -1,6 +1,13 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { FileNode, FileInfo } from '../types';
 
+export interface DirectorySnapshot {
+  signature: string;
+  totalEntries: number;
+  latestModifiedMs: number;
+  truncated: boolean;
+}
+
 export async function readFileContent(path: string): Promise<string> {
   return invoke<string>('read_file', { path });
 }
@@ -31,6 +38,32 @@ export async function getFileInfo(path: string): Promise<FileInfo> {
 
 export async function readDirectory(path: string, maxDepth?: number): Promise<FileNode[]> {
   return invoke<FileNode[]>('read_directory', { path, maxDepth: maxDepth ?? 10 });
+}
+
+export async function getDirectorySnapshot(
+  path: string,
+  maxDepth?: number,
+  maxEntries?: number
+): Promise<DirectorySnapshot> {
+  return invoke<DirectorySnapshot>('get_directory_snapshot', {
+    path,
+    maxDepth: maxDepth ?? 10,
+    maxEntries: maxEntries ?? null,
+  });
+}
+
+export async function readDirectoryIfChanged(
+  path: string,
+  knownSignature?: string | null,
+  maxDepth?: number,
+  maxEntries?: number
+): Promise<{ changed: boolean; signature: string; snapshot: DirectorySnapshot; entries: FileNode[] | null }> {
+  const snapshot = await getDirectorySnapshot(path, maxDepth, maxEntries);
+  if (knownSignature && snapshot.signature === knownSignature) {
+    return { changed: false, signature: snapshot.signature, snapshot, entries: null };
+  }
+  const entries = await readDirectory(path, maxDepth);
+  return { changed: true, signature: snapshot.signature, snapshot, entries };
 }
 
 export async function createDirectory(path: string): Promise<void> {

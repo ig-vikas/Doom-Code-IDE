@@ -16,7 +16,7 @@ export default function OutputPanel() {
   if (!compileResult) {
     return (
       <div className="output-panel" style={{ color: 'var(--text-faint)' }}>
-        No output yet. Press F5 or click ▶ to build and run.
+        No output yet. Press Ctrl+B or click Run to build and run.
       </div>
     );
   }
@@ -25,7 +25,7 @@ export default function OutputPanel() {
     <div className="output-panel">
       {compileResult.success ? (
         <div>
-          <span className="output-success">✓ Compilation successful</span>
+          <span className="output-success">Compilation successful</span>
           {compileResult.warnings && compileResult.warnings.length > 0 && (
             <div style={{ marginTop: 8 }}>
               <span className="output-warning">Warnings:</span>
@@ -39,7 +39,7 @@ export default function OutputPanel() {
         </div>
       ) : (
         <div>
-          <span className="output-error">✗ Compilation failed</span>
+          <span className="output-error">Compilation failed</span>
           {compileResult.errors && compileResult.errors.length > 0 && (
             <div style={{ marginTop: 8 }}>
               {compileResult.errors.map((err, i) => (

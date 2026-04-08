@@ -1,44 +1,73 @@
+use std::path::Path;
+use std::time::{Duration, Instant};
+
+use crate::state::RunningProcess;
+
+const PROCESS_EXIT_WAIT_MS: u64 = 1200;
+
 #[tauri::command]
 pub async fn kill_running_process(
     state: tauri::State<'_, crate::state::AppState>,
 ) -> Result<(), String> {
-    let entry = {
-        let mut proc = state
+    let running = {
+        let mut guard = state
             .running_process
             .lock()
             .map_err(|e| format!("Lock error: {}", e))?;
-        proc.take()
+        guard.take()
     };
 
-    if let Some((pid, exe_path)) = entry {
-        // Kill by PID first
-        force_kill_pid(pid);
-        // Also kill by executable image name (catches detached/child processes)
-        force_kill_by_name(&exe_path);
-        // Wait for OS to release handles
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        // Try deleting the exe
-        force_delete_exe(&exe_path);
+    if let Some(running) = running {
+        terminate_and_wait(running.pid, Duration::from_millis(PROCESS_EXIT_WAIT_MS));
+        try_remove_file_with_backoff(&running.exec_path, 16, Duration::from_millis(40));
+    }
+
+    Ok(())
+}
+
+pub fn set_running_process(
+    state: &crate::state::AppState,
+    process: RunningProcess,
+) -> Result<(), String> {
+    let mut guard = state.running_process.lock().map_err(|e| e.to_string())?;
+    *guard = Some(process);
+    Ok(())
+}
+
+pub fn clear_running_process(
+    state: &crate::state::AppState,
+    pid: u32,
+) -> Result<(), String> {
+    let mut guard = state.running_process.lock().map_err(|e| e.to_string())?;
+    if guard.as_ref().map(|p| p.pid) == Some(pid) {
+        *guard = None;
     }
     Ok(())
 }
 
-/// Force-kill a process and its entire tree by PID.
-pub fn force_kill_pid(pid: u32) {
+pub fn take_running_process(
+    state: &crate::state::AppState,
+) -> Result<Option<RunningProcess>, String> {
+    let mut guard = state.running_process.lock().map_err(|e| e.to_string())?;
+    Ok(guard.take())
+}
+
+pub fn terminate_and_wait(pid: u32, timeout: Duration) -> bool {
+    terminate_pid(pid);
+    wait_for_pid_exit(pid, timeout)
+}
+
+/// Force-kill a process and its tree by PID.
+pub fn terminate_pid(pid: u32) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        // Kill entire process tree
         let mut cmd = std::process::Command::new("taskkill");
         cmd.args(["/F", "/T", "/PID", &pid.to_string()]);
         cmd.creation_flags(0x08000000);
         let _ = cmd.output();
-        // Also kill without /T in case tree kill missed it
-        let mut cmd2 = std::process::Command::new("taskkill");
-        cmd2.args(["/F", "/PID", &pid.to_string()]);
-        cmd2.creation_flags(0x08000000);
-        let _ = cmd2.output();
     }
+
     #[cfg(not(windows))]
     {
         let _ = std::process::Command::new("kill")
@@ -47,43 +76,66 @@ pub fn force_kill_pid(pid: u32) {
     }
 }
 
-/// Force-kill all processes matching the executable's image name.
-/// This catches processes that survived PID-based kill (detached children, etc.)
-pub fn force_kill_by_name(exe_path: &str) {
-    let p = std::path::Path::new(exe_path);
-    if let Some(file_name) = p.file_name().and_then(|n| n.to_str()) {
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            let mut cmd = std::process::Command::new("taskkill");
-            cmd.args(["/F", "/IM", file_name]);
-            cmd.creation_flags(0x08000000);
-            let _ = cmd.output();
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = std::process::Command::new("pkill")
-                .args(["-9", "-f", file_name])
-                .output();
+pub fn try_remove_file_with_backoff(path: &str, attempts: usize, delay: Duration) -> bool {
+    let p = Path::new(path);
+    if !p.exists() {
+        return true;
+    }
+
+    for _ in 0..attempts {
+        match std::fs::remove_file(p) {
+            Ok(_) => return true,
+            Err(_) if !p.exists() => return true,
+            Err(_) => std::thread::sleep(delay),
         }
     }
+
+    false
 }
 
-/// Force-delete an exe file, retrying multiple times to wait for OS handle release.
-/// If the file is locked, also re-attempts killing processes using it.
-pub fn force_delete_exe(path: &str) {
-    let p = std::path::Path::new(path);
-    if !p.exists() {
-        return;
+fn wait_for_pid_exit(pid: u32, timeout: Duration) -> bool {
+    let started = Instant::now();
+    while started.elapsed() < timeout {
+        if !is_pid_running(pid) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(25));
     }
-    for attempt in 0..20 {
-        if std::fs::remove_file(p).is_ok() {
-            return;
+    !is_pid_running(pid)
+}
+
+fn is_pid_running(pid: u32) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut cmd = std::process::Command::new("tasklist");
+        cmd.args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"]);
+        cmd.creation_flags(0x08000000);
+
+        if let Ok(output) = cmd.output() {
+            let text = String::from_utf8_lossy(&output.stdout);
+            for line in text.lines() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                if trimmed.starts_with("INFO:") {
+                    return false;
+                }
+                if trimmed.contains(&format!(",\"{}\"", pid)) || trimmed.ends_with(&format!(",\"{}\"", pid)) {
+                    return true;
+                }
+            }
         }
-        // Every 5th retry, try killing processes that might still hold the file
-        if attempt % 5 == 4 {
-            force_kill_by_name(path);
-        }
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        false
+    }
+
+    #[cfg(not(windows))]
+    {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
     }
 }

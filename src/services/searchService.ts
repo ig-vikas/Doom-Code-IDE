@@ -17,6 +17,7 @@ export async function searchInFiles(
     includePattern?: string;
     excludePattern?: string;
     maxResults?: number;
+    searchToken?: number;
   }
 ): Promise<SearchMatch[]> {
   return invoke<SearchMatch[]>('search_in_files', {
@@ -28,5 +29,6 @@ export async function searchInFiles(
     includePattern: options?.includePattern ?? null,
     excludePattern: options?.excludePattern ?? null,
     maxResults: options?.maxResults ?? 1000,
+    searchToken: options?.searchToken ?? null,
   });
 }
