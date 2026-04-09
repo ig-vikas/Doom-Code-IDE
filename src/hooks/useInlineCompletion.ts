@@ -42,12 +42,17 @@ function isAcceptShortcutPressed(
 export function useInlineCompletion({ editor, enabled = true }: UseInlineCompletionOptions) {
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const decorationsRef = useRef<string[]>([]);
-  const lastPositionRef = useRef<{ lineNumber: number; column: number } | null>(null);
+  const lastTriggerPositionRef = useRef<{ lineNumber: number; column: number } | null>(null);
 
   const aiConfig = useAIStore((state) => state.config);
   const pendingSuggestion = useAIStore((state) => state.pendingSuggestion);
   const status = useAIStore((state) => state.status);
 
+  /**
+   * Render ghost text decorations in the editor.
+   * VS Code style: same font as code, just different color + opacity.
+   * Uses `after` injection for the first line and multi-line content.
+   */
   const updateGhostText = useCallback(
     (text: string | null, position: monaco.Position) => {
       if (!editor) {
@@ -59,13 +64,12 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
         return;
       }
 
-      console.log('[AI Inline] Updating ghost text:', text.substring(0, 50));
-
       const lines = text.split('\n');
       const firstLine = lines[0];
       const restLines = lines.slice(1);
       const decorations: monaco.editor.IModelDeltaDecoration[] = [];
 
+      // First line — inject after cursor on the same line
       if (firstLine) {
         decorations.push({
           range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
@@ -75,12 +79,13 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
               inlineClassName: 'ai-ghost-text',
               cursorStops: monaco.editor.InjectedTextCursorStops.None,
             },
-            inlineClassName: 'ai-ghost-text-decoration',
+            // The decoration range itself should not have a className that affects existing text
             zIndex: 1200,
           },
         });
       }
 
+      // Multi-line content — render additional lines
       const model = editor.getModel();
       const maxLine = model?.getLineCount() || position.lineNumber;
       if (restLines.length > 0 && aiConfig.completion.multiLineEnabled) {
@@ -97,72 +102,65 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
                 inlineClassName: 'ai-ghost-text-multiline',
                 cursorStops: monaco.editor.InjectedTextCursorStops.None,
               },
-              inlineClassName: 'ai-ghost-text-multiline-decoration',
               zIndex: 1200,
             },
           });
         }
       }
 
-      console.log('[AI Inline] Applying', decorations.length, 'decorations');
       decorationsRef.current = editor.deltaDecorations(decorationsRef.current, decorations);
-      console.log('[AI Inline] Decorations applied:', decorationsRef.current);
     },
     [editor, aiConfig.completion.multiLineEnabled]
   );
 
+  /**
+   * Trigger a completion request. Validates context before sending.
+   */
   const triggerCompletion = useCallback(
     async (position: { lineNumber: number; column: number }, triggerKind: 'auto' | 'manual') => {
-      console.log('[AI Inline] triggerCompletion called', {
-        position,
-        triggerKind,
-        hasEditor: !!editor,
-        aiEnabled: aiConfig.enabled,
-        enabled,
-      });
-
       if (!editor || !aiConfig.enabled || !enabled) {
-        console.log('[AI Inline] Early return - conditions not met');
         return;
       }
 
-      // Get the model to check file type
+      // Skip for plain text files
       const model = editor.getModel();
       const languageId = model?.getLanguageId?.();
-      
-      // Skip suggestions for plain text files
       if (languageId === 'plaintext' || languageId === 'text') {
-        console.log('[AI Inline] Skipping completion for text file');
         return;
       }
 
-      lastPositionRef.current = position;
+      // For auto-trigger, skip if we are on line 1 and it's completely empty
+      if (triggerKind === 'auto' && position.lineNumber <= 1) {
+        const lineContent = model?.getLineContent(position.lineNumber) || '';
+        if (lineContent.trim().length === 0) {
+          return;
+        }
+      }
+
+      lastTriggerPositionRef.current = position;
 
       try {
-        console.log('[AI Inline] Requesting completion from engine...');
         const completion = await completionEngine.requestCompletion(position, triggerKind);
-        console.log('[AI Inline] Completion received:', completion ? completion.text.substring(0, 50) : 'null');
-        
         const currentPosition = editor.getPosition();
 
         if (
           currentPosition &&
           currentPosition.lineNumber === position.lineNumber &&
-          Math.abs(currentPosition.column - position.column) <= 1 &&
+          Math.abs(currentPosition.column - position.column) <= 2 &&
           completion
         ) {
-          console.log('[AI Inline] Updating ghost text');
           updateGhostText(completion.displayText || completion.text, currentPosition);
-        } else {
-          console.log('[AI Inline] Not showing completion - position mismatch or no completion');
         }
       } catch (error) {
-        console.error('[AI Inline] Completion trigger error:', error);
+        console.error('[AI Inline] Completion error:', error);
       }
     },
     [editor, aiConfig.enabled, enabled, updateGhostText]
   );
 
+  /**
+   * Accept the current pending suggestion — insert text at cursor.
+   */
   const acceptSuggestion = useCallback((): boolean => {
     if (!editor || !pendingSuggestion) {
       return false;
@@ -196,6 +194,9 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     return true;
   }, [editor, pendingSuggestion, updateGhostText]);
 
+  /**
+   * Reject (dismiss) the current pending suggestion.
+   */
   const rejectSuggestion = useCallback(() => {
     if (!pendingSuggestion) {
       return;
@@ -208,6 +209,9 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     }
   }, [editor, pendingSuggestion, updateGhostText]);
 
+  /**
+   * Accept the next N words from the pending suggestion (partial accept).
+   */
   const acceptPartialSuggestion = useCallback(
     (wordCount: number = 1): boolean => {
       if (!editor || !pendingSuggestion) {
@@ -250,11 +254,13 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     [editor, pendingSuggestion, updateGhostText]
   );
 
+  // ── Main effect: wire up editor events ──
   useEffect(() => {
     if (!editor || !aiConfig.enabled || !enabled) {
       return;
     }
 
+    // On content change: cancel pending, debounce auto-trigger
     const contentDisposable = editor.onDidChangeModelContent(() => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
@@ -279,17 +285,17 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
       }, aiConfig.completion.triggerDelay);
     });
 
+    // On cursor position change: dismiss if moved to a different line
     const cursorDisposable = editor.onDidChangeCursorPosition((event) => {
       if (
-        lastPositionRef.current &&
-        (event.position.lineNumber !== lastPositionRef.current.lineNumber ||
-          Math.abs(event.position.column - lastPositionRef.current.column) > 1)
+        lastTriggerPositionRef.current &&
+        event.position.lineNumber !== lastTriggerPositionRef.current.lineNumber
       ) {
         rejectSuggestion();
       }
     });
 
-    // Priority shortcut handling so accept/reject works even when Monaco default bindings conflict.
+    // Priority shortcut handling — accept/reject works even when Monaco bindings conflict
     const keydownDisposable = editor.onKeyDown((event) => {
       const hasSuggestion = !!useAIStore.getState().pendingSuggestion;
       if (!hasSuggestion) {
@@ -310,6 +316,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
       }
     });
 
+    // Editor actions for command palette / programmatic invocation
     const acceptAction = editor.addAction({
       id: 'ai.acceptSuggestion',
       label: 'Accept AI Suggestion',
@@ -385,6 +392,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     updateGhostText,
   ]);
 
+  // ── Sync ghost text with pendingSuggestion store changes ──
   useEffect(() => {
     if (!editor) {
       return;
@@ -414,4 +422,3 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
           : 'Tab to accept',
   };
 }
-

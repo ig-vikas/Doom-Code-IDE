@@ -34,14 +34,14 @@ export default function DocsPanel() {
             ×
           </button>
         </div>
-        
+
         <div className="docs-panel-content">
           {/* Introduction */}
           <section className="docs-section">
             <h2>Introduction</h2>
             <p>
-              Doom Code is a lightweight (13 MB) C++ IDE built with Tauri, React, and Monaco Editor. 
-              It provides a fast, customizable coding environment designed specifically for competitive 
+              Doom Code is a lightweight (18 MB) C++ IDE built with Tauri, React, and Monaco Editor.
+              It provides a fast, customizable coding environment designed specifically for competitive
               programming and C++ development.
             </p>
           </section>
@@ -56,7 +56,7 @@ export default function DocsPanel() {
               <li><strong>Open File:</strong> Press <code>Ctrl+O</code> or use File → Open File</li>
               <li><strong>Open Folder:</strong> Press <code>Ctrl+K Ctrl+O</code> to open a workspace folder</li>
             </ul>
-            
+
             <h3>Saving Your Work</h3>
             <ul>
               <li><strong>Save:</strong> Press <code>Ctrl+S</code></li>
@@ -72,7 +72,7 @@ export default function DocsPanel() {
             <p>
               Doom Code includes a powerful build system with multiple profiles for different compilation needs.
             </p>
-            
+
             <h3>Build Profiles</h3>
             <div className="docs-profile-grid">
               <div className="docs-profile-card">
@@ -118,7 +118,7 @@ export default function DocsPanel() {
             <p>
               Manage and run test cases to verify your code against expected outputs.
             </p>
-            
+
             <h3>Creating Test Cases</h3>
             <ol>
               <li>Open the Test Cases panel (bottom panel)</li>
@@ -155,7 +155,7 @@ export default function DocsPanel() {
             <p>
               Snippets allow you to quickly insert commonly used code patterns.
             </p>
-            
+
             <h3>Using Snippets</h3>
             <ol>
               <li>Type the snippet prefix (e.g., <code>for</code>, <code>while</code>, <code>class</code>)</li>
@@ -203,7 +203,7 @@ export default function DocsPanel() {
             <p>
               Doom Code integrates with multiple AI providers for intelligent code suggestions.
             </p>
-            
+
             <h3>Supported AI Providers</h3>
             <div className="docs-ai-providers">
               <div className="docs-ai-card">
@@ -307,16 +307,16 @@ export default function DocsPanel() {
             <div className="docs-error-section">
               <h4>No API Key</h4>
               <p><strong>Solution:</strong> Enter your API key in AI Settings and click "Test Connection"</p>
-              
+
               <h4>Connection Failed</h4>
               <p><strong>Solution:</strong> Check your internet connection, verify API key is valid, ensure provider service is available</p>
-              
+
               <h4>Rate Limit Exceeded</h4>
               <p><strong>Solution:</strong> Wait before making more requests, upgrade your API plan, or switch to a different provider</p>
-              
+
               <h4>Invalid Model</h4>
               <p><strong>Solution:</strong> Select a valid model from the dropdown, or verify custom model ID is correct</p>
-              
+
               <h4>Context Too Large</h4>
               <p><strong>Solution:</strong> Reduce max context lines in Context Settings, or select a model with larger context window</p>
             </div>
@@ -341,7 +341,7 @@ export default function DocsPanel() {
             <p>
               Doom Code uses Monaco Editor, the same editor that powers VS Code.
             </p>
-            
+
             <h3>Key Features</h3>
             <ul>
               <li><strong>IntelliSense:</strong> Auto-completion for C++ keywords, functions, and variables</li>
@@ -375,7 +375,7 @@ export default function DocsPanel() {
             <p>
               Customize the look and feel of Doom Code with built-in themes and color schemes.
             </p>
-            
+
             <h3>UI Themes</h3>
             <p>Available themes for the application interface:</p>
             <ul>
@@ -423,7 +423,7 @@ export default function DocsPanel() {
             <p>
               Master Doom Code with these essential keyboard shortcuts.
             </p>
-            
+
             <h3>File Operations</h3>
             <table className="docs-shortcuts-table">
               <tbody>
@@ -503,7 +503,7 @@ export default function DocsPanel() {
             <p>
               Doom Code includes a built-in terminal powered by xterm.js.
             </p>
-            
+
             <h3>Terminal Features</h3>
             <ul>
               <li>Full terminal emulation with ANSI color support</li>
@@ -526,7 +526,7 @@ export default function DocsPanel() {
           {/* Tips & Tricks */}
           <section className="docs-section">
             <h2>Tips & Tricks</h2>
-            
+
             <h3>Competitive Programming Workflow</h3>
             <ol>
               <li>Press <code>Ctrl+Alt+N</code> to create a new CP file with template</li>
@@ -559,15 +559,15 @@ export default function DocsPanel() {
           {/* Troubleshooting */}
           <section className="docs-section">
             <h2>Troubleshooting</h2>
-            
+
             <h3>Build Issues</h3>
             <div className="docs-error-section">
               <h4>Compiler Not Found</h4>
               <p><strong>Solution:</strong> Install g++ or specify custom compiler path in Settings → Build</p>
-              
+
               <h4>Compilation Errors</h4>
               <p><strong>Solution:</strong> Check error messages in Output panel, verify C++ standard version, ensure all includes are present</p>
-              
+
               <h4>Execution Fails</h4>
               <p><strong>Solution:</strong> Check for runtime errors, verify input format, ensure executable has proper permissions</p>
             </div>
@@ -576,7 +576,7 @@ export default function DocsPanel() {
             <div className="docs-error-section">
               <h4>No Suggestions Appearing</h4>
               <p><strong>Solution:</strong> Enable AI toggle, verify API key, check auto-trigger is enabled, try manual trigger with Alt+\</p>
-              
+
               <h4>Slow Responses</h4>
               <p><strong>Solution:</strong> Reduce max context lines, use faster model, check network connection, consider using Ollama locally</p>
             </div>
@@ -585,10 +585,10 @@ export default function DocsPanel() {
             <div className="docs-error-section">
               <h4>Files Not Saving</h4>
               <p><strong>Solution:</strong> Check file permissions, verify disk space, ensure file path is valid</p>
-              
+
               <h4>UI Not Responding</h4>
               <p><strong>Solution:</strong> Close large files, reduce zoom level, restart application</p>
-              
+
               <h4>Terminal Not Working</h4>
               <p><strong>Solution:</strong> Check shell configuration, verify terminal settings, restart application</p>
             </div>
@@ -603,12 +603,12 @@ export default function DocsPanel() {
               <strong>Built with:</strong> Tauri 2.0, React 18, TypeScript 5, Monaco Editor, xterm.js
             </p>
             <p>
-              Doom Code is designed for competitive programmers and C++ developers who value speed, 
-              simplicity, and customization. With a lightweight footprint of just 13 MB, it provides 
+              Doom Code is designed for competitive programmers and C++ developers who value speed,
+              simplicity, and customization. With a lightweight footprint of just 13 MB, it provides
               a powerful development environment without the bloat.
             </p>
             <p>
-              95% of the core code is auto-generated by AI agents, continuously optimized through 
+              95% of the core code is auto-generated by AI agents, continuously optimized through
               human-in-the-loop feedback.
             </p>
           </section>
@@ -617,14 +617,14 @@ export default function DocsPanel() {
           <section className="docs-section">
             <h2>Open Source & Customization</h2>
             <p>
-              Doom Code is fully open source and available on GitHub. You can explore the codebase, 
+              Doom Code is fully open source and available on GitHub. You can explore the codebase,
               contribute improvements, report issues, or fork the project to create your own customized IDE.
             </p>
-            
+
             <div className="docs-github-card">
               <div className="docs-github-icon">
                 <svg width="32" height="32" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                  <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
                 </svg>
               </div>
               <div className="docs-github-content">
@@ -632,15 +632,15 @@ export default function DocsPanel() {
                 <p>
                   Access the complete source code, documentation, and development resources.
                 </p>
-                <a 
+                <a
                   href={githubRepoUrl}
                   onClick={handleGitHubClick}
                   className="docs-github-link"
                 >
                   <span>github.com/ig-vikas/Doom-Code-IDE</span>
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M3.75 2a.75.75 0 01.75.75v7.5a.75.75 0 01-1.5 0v-7.5A.75.75 0 013.75 2zm8.5 0a.75.75 0 01.75.75v7.5a.75.75 0 01-1.5 0v-7.5a.75.75 0 01.75-.75zm-8.5 10a.75.75 0 01.75.75v.5a.75.75 0 01-1.5 0v-.5a.75.75 0 01.75-.75zm8.5 0a.75.75 0 01.75.75v.5a.75.75 0 01-1.5 0v-.5a.75.75 0 01.75-.75z"/>
-                    <path d="M8 1a.75.75 0 01.75.75v.688l.549-.549a.75.75 0 111.06 1.06L8.53 4.78a.75.75 0 01-1.06 0L5.64 2.95a.75.75 0 111.06-1.06l.549.549V1.75A.75.75 0 018 1z"/>
+                    <path d="M3.75 2a.75.75 0 01.75.75v7.5a.75.75 0 01-1.5 0v-7.5A.75.75 0 013.75 2zm8.5 0a.75.75 0 01.75.75v7.5a.75.75 0 01-1.5 0v-7.5a.75.75 0 01.75-.75zm-8.5 10a.75.75 0 01.75.75v.5a.75.75 0 01-1.5 0v-.5a.75.75 0 01.75-.75zm8.5 0a.75.75 0 01.75.75v.5a.75.75 0 01-1.5 0v-.5a.75.75 0 01.75-.75z" />
+                    <path d="M8 1a.75.75 0 01.75.75v.688l.549-.549a.75.75 0 111.06 1.06L8.53 4.78a.75.75 0 01-1.06 0L5.64 2.95a.75.75 0 111.06-1.06l.549.549V1.75A.75.75 0 018 1z" />
                   </svg>
                 </a>
               </div>

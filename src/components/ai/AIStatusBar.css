@@ -138,14 +138,16 @@
 }
 
 .ai-ghost-text {
-  color: var(--text-muted) !important;
-  opacity: var(--ai-ghost-opacity, 0.5) !important;
-  font-style: italic;
+  color: #6e7681 !important;
+  opacity: var(--ai-ghost-opacity, 0.6) !important;
+  font-style: normal !important;
+  font-weight: normal !important;
 }
 
 .ai-ghost-text-multiline {
-  color: var(--text-muted) !important;
-  opacity: calc(var(--ai-ghost-opacity, 0.5) - 0.1) !important;
-  font-style: italic;
+  color: #6e7681 !important;
+  opacity: var(--ai-ghost-opacity, 0.6) !important;
+  font-style: normal !important;
+  font-weight: normal !important;
   white-space: pre;
 }

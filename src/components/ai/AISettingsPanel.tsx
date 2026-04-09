@@ -89,6 +89,19 @@ export default function AISettingsPanel() {
     }
   };
 
+  const applyPrivacyPreset = () => {
+    updateCompletionSettings({ autoTrigger: false });
+    updateContextSettings({
+      maxContextLines: Math.min(config.context.maxContextLines, 60),
+      includeOpenFiles: false,
+      maxOpenFilesContext: 1,
+      includeFileTree: false,
+      includeImports: false,
+      prioritizeRelatedFiles: false,
+    });
+    notify.success('Privacy mode applied. Only the active file context is shared.');
+  };
+
   return (
     <div className="ai-settings-panel">
       <div className="settings-header">
@@ -547,6 +560,12 @@ export default function AISettingsPanel() {
         <div className="settings-section">
           <h3>Context Settings</h3>
 
+          <p className="hint">Privacy first: keep extra context off unless needed for better completions.</p>
+
+          <button type="button" className="refresh-btn" onClick={applyPrivacyPreset}>
+            Apply Privacy Mode
+          </button>
+
           <div className="setting-row">
             <label>Context Lines (before/after cursor)</label>
             <input
@@ -565,7 +584,7 @@ export default function AISettingsPanel() {
               checked={config.context.includeOpenFiles}
               onChange={(event) => updateContextSettings({ includeOpenFiles: event.target.checked })}
             />
-            <span>Include content from other open files</span>
+            <span>Include content from other open files (less private)</span>
           </label>
 
           {config.context.includeOpenFiles ? (
@@ -587,7 +606,7 @@ export default function AISettingsPanel() {
               checked={config.context.includeImports}
               onChange={(event) => updateContextSettings({ includeImports: event.target.checked })}
             />
-            <span>Analyze and include imports</span>
+            <span>Analyze and include imports (less private)</span>
           </label>
 
           <label className="setting-checkbox">
@@ -605,7 +624,7 @@ export default function AISettingsPanel() {
               checked={config.context.includeFileTree}
               onChange={(event) => updateContextSettings({ includeFileTree: event.target.checked })}
             />
-            <span>Include project structure in context</span>
+            <span>Include project structure in context (less private)</span>
           </label>
         </div>
 

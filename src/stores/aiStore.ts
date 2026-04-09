@@ -193,12 +193,17 @@ export const useAIStore = create<AIStore>()(
       },
 
       updateUISettings: (settings) => {
-        set((state) => ({
-          config: {
-            ...state.config,
-            ui: { ...state.config.ui, ...settings },
-          },
-        }));
+        set((state) => {
+          const nextUI = { ...state.config.ui, ...settings };
+          nextUI.ghostTextOpacity = clampGhostTextOpacity(nextUI.ghostTextOpacity);
+
+          return {
+            config: {
+              ...state.config,
+              ui: nextUI,
+            },
+          };
+        });
         void get().saveConfig();
       },
 
@@ -580,6 +585,14 @@ function createActivityLogEntry(
   };
 }
 
+function clampGhostTextOpacity(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_AI_CONFIG.ui.ghostTextOpacity;
+  }
+
+  return Math.min(0.95, Math.max(0.2, value));
+}
+
 function mergeConfig(config: DeepPartialAIConfig | null): AIConfiguration {
   if (!config) {
     return DEFAULT_AI_CONFIG;
@@ -598,7 +611,13 @@ function mergeConfig(config: DeepPartialAIConfig | null): AIConfiguration {
     },
     completion: { ...DEFAULT_AI_CONFIG.completion, ...(config.completion || {}) },
     context: { ...DEFAULT_AI_CONFIG.context, ...(config.context || {}) },
-    ui: { ...DEFAULT_AI_CONFIG.ui, ...(config.ui || {}) },
+    ui: {
+      ...DEFAULT_AI_CONFIG.ui,
+      ...(config.ui || {}),
+      ghostTextOpacity: clampGhostTextOpacity(
+        config.ui?.ghostTextOpacity ?? DEFAULT_AI_CONFIG.ui.ghostTextOpacity
+      ),
+    },
   };
 }
 

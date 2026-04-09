@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   AIConfiguration,
   Completion,
   CompletionRequest,
@@ -27,17 +27,7 @@ class CompletionEngine {
     const editorStore = useEditorStore.getState();
     const resolvedModelId = resolveActiveProviderModelId(aiStore.config);
 
-    console.log('[Completion Engine] requestCompletion called', {
-      position,
-      triggerKind,
-      aiEnabled: aiStore.config.enabled,
-      provider: aiStore.config.activeProvider,
-      model: resolvedModelId,
-      status: aiStore.status,
-    });
-
     if (!aiStore.config.enabled) {
-      console.log('[Completion Engine] AI not enabled');
       return null;
     }
 
@@ -45,22 +35,15 @@ class CompletionEngine {
 
     const activeTab = editorStore.getActiveTab();
     if (!activeTab) {
-      console.warn('[Completion Engine] No active tab found');
       return null;
     }
 
     const activeFilePath = activeTab.path || `untitled://${activeTab.id}/${activeTab.name || 'untitled'}`;
-    console.log('[Completion Engine] Active file path:', activeFilePath);
 
     try {
-      console.log('[Completion Engine] Building context...');
       const context = await buildContext(activeFilePath, position, aiStore.config.context);
-      console.log('[Completion Engine] Context built:', {
-        language: context.language,
-        prefixLength: context.prefix.length,
-        hasSuffix: context.hasSuffix,
-        estimatedTokens: context.estimatedTokens,
-      });
+
+      // Removed arbitrary prefix length check to ensure completions can trigger normally
 
       const cacheKey = this.getCacheKey(context, position);
       const cached = this.cache.get(cacheKey);
@@ -102,9 +85,7 @@ class CompletionEngine {
         message: `Requesting completion from ${request.provider}/${request.modelId} (${triggerKind}).`,
       });
 
-      console.log('[Completion Engine] Getting provider:', request.provider);
       const provider = await providerRegistry.getProvider(request.provider);
-      console.log('[Completion Engine] Provider obtained, supports streaming:', provider.supportsStreaming());
 
       let response: CompletionResponse;
       if (provider.supportsStreaming()) {
@@ -122,7 +103,7 @@ class CompletionEngine {
             type: 'error',
             message: `Streaming failed for ${request.provider}; retrying non-streaming completion.`,
           });
-          console.warn('Streaming completion failed, falling back to non-streaming:', streamError);
+          console.warn('[Completion Engine] Streaming failed, falling back:', streamError);
           response = await provider.complete(request);
         }
       } else {
@@ -131,7 +112,7 @@ class CompletionEngine {
 
       return this.handleResponse(response, cacheKey);
     } catch (error) {
-      console.error('[Completion Engine] Completion error:', error);
+      console.error('[Completion Engine] Error:', error);
       aiStore.setStatus('error');
       aiStore.addActivityLog({
         type: 'error',
@@ -185,7 +166,7 @@ class CompletionEngine {
     aiStore.setStatus('idle');
 
     if (response.error) {
-      console.error('Completion error:', response.error);
+      console.error('[Completion Engine] Response error:', response.error);
       return null;
     }
 

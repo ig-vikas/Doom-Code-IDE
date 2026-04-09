@@ -572,10 +572,12 @@ input::placeholder, textarea::placeholder {
 .titlebar-ai-slot {
   display: flex;
   align-items: center;
-  margin-right: 116px;
+  -webkit-app-region: no-drag;
   position: relative;
   z-index: 2;
+  flex-shrink: 0;
 }
+
 
 .titlebar-controls {
   display: flex;
@@ -1428,8 +1430,11 @@ input::placeholder, textarea::placeholder {
 }
 
 .monaco-editor .ghost-text,
-.monaco-editor .inline-suggestion-text {
-  opacity: 0.5;
+.monaco-editor .inline-suggestion-text,
+.monaco-editor .inline-completions-text {
+  color: #6e7681 !important;
+  opacity: var(--ai-ghost-opacity, 0.6);
+  font-style: normal !important;
   transition: opacity 150ms ease, color 150ms ease;
 }
 
@@ -2957,18 +2962,28 @@ input::placeholder, textarea::placeholder {
 
 .monaco-editor .ghost-text,
 .monaco-editor .ghost-text-decoration,
+.monaco-editor .inline-suggestion-text,
 .monaco-editor .inline-completions-text,
 .monaco-editor .view-line .ai-ghost-text,
 .monaco-editor .view-line .ai-ghost-text-multiline {
-  color: var(--text-secondary) !important;
-  opacity: var(--ai-ghost-opacity, 0.62) !important;
+  color: #6a737d !important;
+  opacity: 0.6 !important;
   font-style: normal !important;
+  font-weight: normal !important;
   pointer-events: none !important;
 }
 
-.monaco-editor .ai-ghost-text-decoration,
-.monaco-editor .ai-ghost-text-multiline-decoration {
-  opacity: 1 !important;
+.monaco-editor .ai-ghost-text-multiline {
+  white-space: pre !important;
+}
+
+@keyframes ghostTextFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: var(--ai-ghost-opacity, 0.6);
+  }
 }
 
 .monaco-editor .suggest-widget,

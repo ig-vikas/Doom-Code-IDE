@@ -120,20 +120,13 @@ export async function buildContext(
   position: { lineNumber: number; column: number },
   settings: ContextSettings
 ): Promise<ContextResult> {
-  console.log('[Context Builder] Building context for:', filePath, 'at position:', position);
-  
   const editorStore = useEditorStore.getState();
   const allTabs = editorStore.getAllGroups().flatMap((group) => group.tabs);
 
   const model = resolveModelForContext(filePath);
   if (!model) {
-    console.error('[Context Builder] No editor model found for file:', filePath);
-    const allModels = getAllMonacoModels();
-    console.error('[Context Builder] Available models:', allModels.map((m: any) => m?.uri?.toString?.() || 'unknown'));
     throw new Error('No editor model found for file');
   }
-
-  console.log('[Context Builder] Model found:', model?.uri?.toString?.());
 
   const fullText = model.getValue();
   const lines = fullText.split('\n');
@@ -273,7 +266,7 @@ async function getRelatedFilesContext(
     }
 
     const content = model.getValue();
-    const truncated = content.split('\n').slice(0, 50).join('\n');
+    const truncated = content.split('\n').slice(0, 30).join('\n');
     const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
     contexts.push(`// --- ${fileName} ---\n${truncated}`);
   }

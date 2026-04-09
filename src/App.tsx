@@ -328,7 +328,10 @@ export default function App() {
   }, [zoomLevel]);
 
   useEffect(() => {
-    document.documentElement.style.setProperty('--ai-ghost-opacity', `${ghostOpacity}`);
+    const safeGhostOpacity = Number.isFinite(ghostOpacity)
+      ? Math.min(0.95, Math.max(0.2, ghostOpacity))
+      : 0.5;
+    document.documentElement.style.setProperty('--ai-ghost-opacity', `${safeGhostOpacity}`);
   }, [ghostOpacity]);
 
   useEffect(() => {

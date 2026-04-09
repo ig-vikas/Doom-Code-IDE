@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useKeybindingStore } from '../stores/keybindingStore';
+import { useAIStore } from '../stores/aiStore';
 import { executeCommand, hasCommand } from '../services/commandService';
 
 interface ParsedKeybinding {
@@ -18,6 +19,7 @@ const META_TOKENS = new Set(['meta', 'cmd', 'command', 'win', 'super']);
 const KEY_ALIASES: Record<string, string> = {
   esc: 'escape',
   return: 'enter',
+  numpadenter: 'enter',
   ' ': 'space',
   spacebar: 'space',
   arrowup: 'up',
@@ -121,6 +123,17 @@ const GLOBAL_COMMANDS = new Set([
   'build.build', 'build.killProcess', 'build.runAllTestCases',
 ]);
 
+// Monaco uses a hidden textarea for typing; allow selected editor commands there.
+const MONACO_INPUT_COMMANDS = new Set([
+  'edit.insertLineAfter',
+  'edit.insertLineBefore',
+]);
+
+function isCtrlEnter(e: KeyboardEvent): boolean {
+  const eventKey = normalizeKeyToken(e.key.toLowerCase());
+  return (eventKey === 'enter' || e.code === 'NumpadEnter') && (e.ctrlKey || e.metaKey) && !e.altKey;
+}
+
 export function useGlobalKeybindings() {
   const overrides = useKeybindingStore((s) => s.overrides);
 
@@ -191,13 +204,40 @@ export function useGlobalKeybindings() {
       }
 
       const target = e.target instanceof HTMLElement ? e.target : null;
+      const isMonacoInput = !!target?.closest('.monaco-editor');
       const isInput = !!target && (
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable
       );
 
-      const isAllowed = (command: string) => !isInput || GLOBAL_COMMANDS.has(command);
+      // Keep Ctrl+Enter available for AI acceptance when inline suggestion is visible.
+      if (isMonacoInput && isCtrlEnter(e)) {
+        const aiState = useAIStore.getState();
+        if (
+          aiState.config.enabled &&
+          aiState.config.completion.acceptKey === 'ctrl+enter' &&
+          !!aiState.pendingSuggestion
+        ) {
+          return;
+        }
+      }
+
+      const isAllowed = (command: string) => {
+        if (!isInput) {
+          return true;
+        }
+
+        if (GLOBAL_COMMANDS.has(command)) {
+          return true;
+        }
+
+        if (isMonacoInput && MONACO_INPUT_COMMANDS.has(command)) {
+          return true;
+        }
+
+        return false;
+      };
 
       if (pendingBindings.length > 0) {
         const nextMatches = pendingBindings.filter((binding) =>

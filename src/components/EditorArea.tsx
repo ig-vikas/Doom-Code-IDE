@@ -716,6 +716,7 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
                   enabled: true,
                   mode: 'prefix',
                   suppressSuggestions: false,
+                  showToolbar: 'onHover',
                 } as any,
                 suggest: {
                   showSnippets: settings.editor.snippetSuggestions !== 'none',

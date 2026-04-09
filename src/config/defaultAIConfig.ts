@@ -1,4 +1,4 @@
-﻿import type { AIConfiguration } from '../types/ai';
+import type { AIConfiguration } from '../types/ai';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from './aiModels';
 
 export const DEFAULT_AI_CONFIG: AIConfiguration = {
@@ -39,28 +39,28 @@ export const DEFAULT_AI_CONFIG: AIConfiguration = {
     },
   },
   completion: {
-    autoTrigger: true,
-    triggerDelay: 350,
+    autoTrigger: false,
+    triggerDelay: 250,
     maxTokens: 256,
-    temperature: 0.1,
+    temperature: 0,
     topP: 0.95,
-    stopSequences: ['\n\n', '```', '// ---', '# ---'],
+    stopSequences: ['\n\n\n', '```'],
     multiLineEnabled: true,
     acceptKey: 'ctrl+enter',
     partialAcceptKey: 'ctrl+right',
   },
   context: {
-    maxContextLines: 100,
-    includeOpenFiles: true,
-    maxOpenFilesContext: 3,
+    maxContextLines: 60,
+    includeOpenFiles: false,
+    maxOpenFilesContext: 1,
     includeFileTree: false,
-    includeImports: true,
-    prioritizeRelatedFiles: true,
+    includeImports: false,
+    prioritizeRelatedFiles: false,
   },
   ui: {
     showStatusInTopBar: true,
     showInlineHints: true,
-    ghostTextOpacity: 0.5,
+    ghostTextOpacity: 0.6,
     showTokenCount: false,
     showCostEstimate: false,
   },

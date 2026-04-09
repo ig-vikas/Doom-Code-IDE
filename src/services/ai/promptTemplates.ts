@@ -48,62 +48,46 @@ export class PromptTemplates {
     return { isComment: false, commentType: 'normal', extractedIntent: '' };
   }
 
+  /**
+   * Concise system prompt — VS Code / Copilot style.
+   * The model should act as a code completion engine: no chat, no explanations.
+   */
   static buildEnhancedSystemPrompt(
     language: string,
-    isCommentDriven: boolean,
-    commentType?: CommentIntentType
+    _isCommentDriven: boolean,
+    _commentType?: CommentIntentType
   ): string {
-    return `You are a precise inline code completion engine.
+    return `You are an inline code completion engine for ${language}. Continue the code naturally from the cursor position.
 
-STRICT RULES:
-- Return ONLY the code to insert at cursor position
-- DO NOT repeat any existing code
-- DO NOT include code that's already written
-- NO explanations, NO markdown, NO backticks
-- Just raw code to insert
-- If nothing to suggest, return empty string
-
-Language: ${language}
-${isCommentDriven ? `Comment-driven completion: ${commentType}` : 'Standard completion'}`;
+Rules:
+- Output ONLY the code that should be inserted at the cursor
+- Do NOT repeat any code already present before or after the cursor
+- Do NOT wrap output in markdown code blocks or backticks
+- Do NOT include explanations, comments about what you did, or any preamble
+- If the cursor is after a comment describing intent, generate the code it describes
+- Keep completions concise: prefer completing the current statement or block
+- Match the existing code style, indentation, and naming conventions
+- Return empty string if no meaningful completion exists`;
   }
 
+  /**
+   * Minimal FIM-style user prompt. Just shows the code context around the cursor.
+   * No verbose framing — the model sees prefix, a cursor marker, and suffix.
+   */
   static buildEnhancedUserPrompt(
     prompt: CompletionPrompt,
-    commentIntent: { isComment: boolean; extractedIntent: string }
+    _commentIntent: { isComment: boolean; extractedIntent: string }
   ): string {
-    const filePath = prompt.filePath || 'untitled';
-    const language = prompt.language || 'plaintext';
     const prefix = prompt.prefix || '';
     const suffix = prompt.suffix || '';
 
-    if (commentIntent.isComment && commentIntent.extractedIntent) {
-      return `File: ${filePath}
-Language: ${language}
-
-COMMENT INTENT: ${commentIntent.extractedIntent}
-
-CODE BEFORE CURSOR:
-${prefix}
-
-█ CURSOR POSITION █
-
-CODE AFTER CURSOR:
-${suffix}
-
-Return ONLY the code to insert at cursor that implements the comment intent:`;
+    // Pure FIM-style: prefix + cursor + suffix
+    // The model's job is to output what goes at <CURSOR>
+    if (suffix.trim()) {
+      return `${prefix}<CURSOR>${suffix}`;
     }
 
-    return `File: ${filePath}
-Language: ${language}
-
-CODE BEFORE CURSOR:
-${prefix}
-
-█ CURSOR POSITION █
-
-CODE AFTER CURSOR:
-${suffix}
-
-Return ONLY the text to insert at cursor:`;
+    // No suffix — simple completion from the end of prefix
+    return prefix;
   }
 }

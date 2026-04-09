@@ -11,7 +11,6 @@ interface APIKeyInputProps {
 const MASKED_KEY = '********************';
 
 export default function APIKeyInput({ provider }: APIKeyInputProps) {
-  const getApiKey = useAIStore((state) => state.getApiKey);
   const setApiKey = useAIStore((state) => state.setApiKey);
   const hasApiKey = useAIStore((state) => state.hasApiKey);
   const clearApiKey = useAIStore((state) => state.clearApiKey);
@@ -22,7 +21,6 @@ export default function APIKeyInput({ provider }: APIKeyInputProps) {
   const [hasExistingKey, setHasExistingKey] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isLoadingKey, setIsLoadingKey] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -102,7 +100,7 @@ export default function APIKeyInput({ provider }: APIKeyInputProps) {
   const handleEdit = () => {
     setApiKeyValue('');
     setIsEditing(true);
-    setShowKey(true);
+    setShowKey(false);
   };
 
   const handleClear = async () => {
@@ -129,33 +127,18 @@ export default function APIKeyInput({ provider }: APIKeyInputProps) {
   };
 
   const handleToggleVisibility = async () => {
-    if (showKey) {
-      setShowKey(false);
-      if (!isEditing && hasExistingKey) {
-        setApiKeyValue(MASKED_KEY);
+    if (!isEditing) {
+      if (hasExistingKey) {
+        notify.info('Stored API keys stay masked for privacy. Use Change to enter a new key.');
       }
       return;
     }
 
-    if (hasExistingKey && !isEditing) {
-      setIsLoadingKey(true);
-      try {
-        const storedKey = await getApiKey(provider);
-        setApiKeyValue(storedKey);
-        setShowKey(true);
-      } catch (error) {
-        notify.error('Failed to reveal API key.', String(error));
-      } finally {
-        setIsLoadingKey(false);
-      }
-      return;
-    }
-
-    setShowKey(true);
+    setShowKey((current) => !current);
   };
 
   const providerLink = providerLinks[provider];
-  const inputValue = isEditing || showKey ? apiKey : hasExistingKey ? MASKED_KEY : apiKey;
+  const inputValue = isEditing ? apiKey : hasExistingKey ? MASKED_KEY : apiKey;
 
   return (
     <div className="api-key-input">
@@ -176,11 +159,11 @@ export default function APIKeyInput({ provider }: APIKeyInputProps) {
         <button
           className="toggle-visibility"
           onClick={() => void handleToggleVisibility()}
-          title={showKey ? 'Hide API key' : 'Show API key'}
+          title={isEditing ? (showKey ? 'Hide API key' : 'Show API key') : 'Stored keys stay masked'}
           type="button"
-          disabled={isLoadingKey || (!hasExistingKey && !isEditing)}
+          disabled={!isEditing}
         >
-          {isLoadingKey ? '...' : showKey ? 'Hide' : 'Show'}
+          {showKey ? 'Hide' : 'Show'}
         </button>
       </div>
 
