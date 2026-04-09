@@ -1,0 +1,51 @@
+.ai-inline-hint {
+  position: fixed;
+  bottom: calc(var(--statusbar-height) + 12px);
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  font-size: 11px;
+  color: var(--text-secondary);
+  z-index: 2600;
+  animation: aiHintSlideIn 0.2s ease-out;
+  backdrop-filter: blur(8px);
+}
+
+@keyframes aiHintSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ai-inline-hint .hint-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ai-inline-hint .hint-separator {
+  opacity: 0.4;
+}
+
+.ai-inline-hint kbd {
+  padding: 2px 6px;
+  background: var(--bg-deepest);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-blue);
+}

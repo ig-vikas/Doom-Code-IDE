@@ -569,6 +569,14 @@ input::placeholder, textarea::placeholder {
   z-index: 2;
 }
 
+.titlebar-ai-slot {
+  display: flex;
+  align-items: center;
+  margin-right: 116px;
+  position: relative;
+  z-index: 2;
+}
+
 .titlebar-controls {
   display: flex;
   align-items: center;
@@ -1878,6 +1886,21 @@ input::placeholder, textarea::placeholder {
   filter: brightness(1.15);
 }
 
+.statusbar-button {
+  border: none;
+  background: transparent;
+  transition: all 0.15s ease;
+}
+
+.statusbar-button:hover {
+  background: var(--bg-highlight) !important;
+  color: var(--text-primary) !important;
+}
+
+.statusbar-button:active {
+  background: var(--bg-active) !important;
+}
+
 .status-enter {
   animation: statusItemEnter 200ms ease;
 }
@@ -2932,6 +2955,29 @@ input::placeholder, textarea::placeholder {
   background: var(--bg-highlight);
 }
 
+.monaco-editor .ghost-text,
+.monaco-editor .ghost-text-decoration,
+.monaco-editor .inline-completions-text,
+.monaco-editor .view-line .ai-ghost-text,
+.monaco-editor .view-line .ai-ghost-text-multiline {
+  color: var(--text-secondary) !important;
+  opacity: var(--ai-ghost-opacity, 0.62) !important;
+  font-style: normal !important;
+  pointer-events: none !important;
+}
+
+.monaco-editor .ai-ghost-text-decoration,
+.monaco-editor .ai-ghost-text-multiline-decoration {
+  opacity: 1 !important;
+}
+
+.monaco-editor .suggest-widget,
+.monaco-editor .suggest-details,
+.monaco-editor .parameter-hints-widget,
+.monaco-editor .editor-widget {
+  z-index: 14000 !important;
+}
+
 /* --- Resizer --- */
 .resizer {
   flex-shrink: 0;
@@ -3610,4 +3656,5 @@ input::placeholder, textarea::placeholder {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
 

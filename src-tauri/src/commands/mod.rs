@@ -5,3 +5,4 @@ pub mod config;
 pub mod search;
 pub mod process;
 pub mod system;
+pub mod ai;

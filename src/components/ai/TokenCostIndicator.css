@@ -1,0 +1,31 @@
+.token-cost-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  max-width: 320px;
+  overflow: hidden;
+}
+
+.token-cost-indicator .indicator-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.token-cost-indicator .indicator-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.token-cost-indicator .indicator-value {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  white-space: nowrap;
+}

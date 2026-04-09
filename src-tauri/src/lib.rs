@@ -57,6 +57,18 @@ pub fn run() {
             commands::system::open_in_file_explorer,
             commands::system::get_current_timestamp,
             commands::system::run_shell_command,
+            // AI
+            commands::ai::store_api_key,
+            commands::ai::get_api_key,
+            commands::ai::clear_api_key,
+            commands::ai::has_api_key,
+            commands::ai::test_ai_connection,
+            commands::ai::ai_complete,
+            commands::ai::ai_stream_complete,
+            commands::ai::cancel_ai_request,
+            commands::ai::list_ollama_models,
+            commands::ai::save_ai_config,
+            commands::ai::load_ai_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Doom Code");

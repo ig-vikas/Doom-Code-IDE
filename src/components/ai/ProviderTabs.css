@@ -1,0 +1,42 @@
+﻿.ai-provider-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-provider-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+
+.ai-provider-tab.active {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+}
+
+.ai-provider-tab-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--text-muted);
+}
+
+.ai-provider-tab-status.connected {
+  background: var(--accent-green);
+}
+
+.ai-provider-tab-status.error {
+  background: var(--accent-red);
+}
+
+.ai-provider-tab-status.testing {
+  background: var(--accent-yellow);
+}
+

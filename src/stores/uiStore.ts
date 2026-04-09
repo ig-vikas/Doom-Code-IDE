@@ -16,6 +16,7 @@ interface UIState {
   quickOpenOpen: boolean;
   settingsOpen: boolean;
   aboutOpen: boolean;
+  docsOpen: boolean;
   zoomLevel: number;
   windowMaximized: boolean;
   windowFocused: boolean;
@@ -38,6 +39,7 @@ interface UIState {
   toggleQuickOpen: () => void;
   setSettingsOpen: (v: boolean) => void;
   setAboutOpen: (v: boolean) => void;
+  setDocsOpen: (v: boolean) => void;
   zoomIn: () => void;
   zoomOut: () => void;
   resetZoom: () => void;
@@ -60,6 +62,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   quickOpenOpen: false,
   settingsOpen: false,
   aboutOpen: false,
+  docsOpen: false,
   zoomLevel: 100,
   windowMaximized: false,
   windowFocused: true,
@@ -110,6 +113,7 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   setSettingsOpen: (v) => set({ settingsOpen: v }),
   setAboutOpen: (v) => set({ aboutOpen: v }),
+  setDocsOpen: (v) => set({ docsOpen: v }),
 
   zoomIn: () => set({ zoomLevel: Math.min(200, get().zoomLevel + 10) }),
   zoomOut: () => set({ zoomLevel: Math.max(50, get().zoomLevel - 10) }),

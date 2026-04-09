@@ -6,8 +6,9 @@ import type { AppSettings } from '../types';
 import { VscClose, VscEdit } from 'react-icons/vsc';
 import { defaultKeybindings } from '../config/defaultKeybindings';
 import { EDITOR_FONT_OPTIONS, isAllowedEditorFontFamily } from '../config/lockedAppearance';
+import AISettingsPanel from './ai/AISettingsPanel';
 
-type SettingsCategory = 'editor' | 'appearance' | 'build' | 'terminal' | 'files' | 'keybindings' | 'statistics';
+type SettingsCategory = 'editor' | 'appearance' | 'build' | 'terminal' | 'files' | 'ai' | 'keybindings' | 'statistics';
 
 const categories: { id: SettingsCategory; label: string }[] = [
   { id: 'editor', label: 'Editor' },
@@ -15,6 +16,7 @@ const categories: { id: SettingsCategory; label: string }[] = [
   { id: 'build', label: 'Build' },
   { id: 'terminal', label: 'Terminal' },
   { id: 'files', label: 'Files' },
+  { id: 'ai', label: 'AI' },
   { id: 'keybindings', label: 'Keybindings' },
   { id: 'statistics', label: 'Statistics' },
 ];
@@ -58,6 +60,7 @@ export default function SettingsPanel() {
           {activeCategory === 'build' && <BuildSettings />}
           {activeCategory === 'terminal' && <TerminalSettings />}
           {activeCategory === 'files' && <FilesSettings />}
+          {activeCategory === 'ai' && <AISettingsPanel />}
           {activeCategory === 'keybindings' && <KeybindingsInfo />}
           {activeCategory === 'statistics' && <SolveStats />}
         </div>

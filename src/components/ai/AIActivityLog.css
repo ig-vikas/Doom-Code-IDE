@@ -1,0 +1,132 @@
+.ai-activity-log {
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.ai-activity-log .log-header-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-elevated);
+  padding-right: 8px;
+}
+
+.ai-activity-log .log-header {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.ai-activity-log .log-header:hover {
+  background: var(--bg-highlight);
+}
+
+.ai-activity-log .log-title {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.ai-activity-log .log-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.ai-activity-log .expand-icon {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.ai-activity-log .clear-log-btn-header {
+  padding: 6px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--bg-deepest);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.ai-activity-log .clear-log-btn-header:hover {
+  background: var(--bg-highlight);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.ai-activity-log .log-content {
+  max-height: 220px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.ai-activity-log .log-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.ai-activity-log .log-entry {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: start;
+  font-size: 11px;
+  border-left: 2px solid var(--border-default);
+  padding: 4px 0 4px 8px;
+}
+
+.ai-activity-log .log-time {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.ai-activity-log .log-message {
+  color: var(--text-secondary);
+}
+
+.ai-activity-log .log-request {
+  border-left-color: var(--accent-blue);
+}
+
+.ai-activity-log .log-success,
+.ai-activity-log .log-accepted {
+  border-left-color: var(--accent-green);
+}
+
+.ai-activity-log .log-error,
+.ai-activity-log .log-rejected {
+  border-left-color: var(--accent-red);
+}
+
+.ai-activity-log .log-system {
+  border-left-color: var(--accent-yellow);
+}
+
+.ai-activity-log .clear-log-btn {
+  margin-top: 8px;
+  align-self: flex-start;
+  padding: 6px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--bg-deepest);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.ai-activity-log .clear-log-btn:hover {
+  background: var(--bg-highlight);
+  color: var(--text-primary);
+}

@@ -1,0 +1,112 @@
+.api-key-input {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-wrapper input {
+  flex: 1;
+  padding: 10px 42px 10px 12px;
+  background: var(--bg-deepest, #171714);
+  border: 1px solid var(--border-default, #35342e);
+  border-radius: 8px;
+  color: var(--text-primary, #e8e4df);
+  font-size: 13px;
+  font-family: var(--font-mono, 'Consolas', monospace);
+}
+
+.input-wrapper input:disabled {
+  opacity: 0.68;
+  cursor: not-allowed;
+}
+
+.input-wrapper input:focus {
+  outline: none;
+  border-color: var(--accent-primary, #da7756);
+}
+
+.toggle-visibility {
+  position: absolute;
+  right: 8px;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  opacity: 0.75;
+  transition: opacity 0.2s;
+}
+
+.toggle-visibility:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.api-key-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.save-btn,
+.cancel-btn,
+.edit-btn,
+.clear-btn {
+  padding: 7px 12px;
+  border: 1px solid var(--border-default, #35342e);
+  border-radius: 8px;
+  background: var(--bg-surface, #252420);
+  color: var(--text-primary, #e8e4df);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.save-btn {
+  background: var(--accent-primary, #da7756);
+  border-color: var(--accent-primary, #da7756);
+  color: #fff;
+}
+
+.save-btn:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.edit-btn:hover,
+.cancel-btn:hover {
+  background: var(--bg-highlight, #35342e);
+}
+
+.clear-btn {
+  color: var(--accent-red, #e5655b);
+  border-color: color-mix(in srgb, var(--accent-red) 40%, transparent);
+}
+
+.clear-btn:hover {
+  background: color-mix(in srgb, var(--accent-red) 14%, transparent);
+}
+
+.api-key-hint {
+  font-size: 11px;
+  color: var(--text-muted, #7a766e);
+  margin: 0;
+}
+
+.api-key-hint a {
+  color: var(--accent-blue, #6b9fdb);
+  text-decoration: none;
+}
+
+.api-key-hint a:hover {
+  text-decoration: underline;
+}

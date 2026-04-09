@@ -4,7 +4,9 @@ import type { SplitNode } from '../types';
 import {
   VscWarning,
   VscError,
+  VscBug,
 } from 'react-icons/vsc';
+import AIDebugPanel from './ai/AIDebugPanel';
 
 function useRollingCount(target: number): number {
   const [value, setValue] = useState(target);
@@ -42,6 +44,7 @@ export default function StatusBar() {
 
   const [warningFlash, setWarningFlash] = useState(false);
   const [errorFlash, setErrorFlash] = useState(false);
+  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
 
   const warningValue = useRollingCount(warningCount);
   const errorValue = useRollingCount(errorCount);
@@ -77,49 +80,67 @@ export default function StatusBar() {
   }, [activeGroupId, layout]);
 
   return (
-    <div className={`statusbar ${compiling || running ? 'busy' : ''}`}>
-      <div className="statusbar-left">
-        {(compiling || running) ? (
-          <div className="statusbar-item accent status-enter">
-            <div className="spinner" style={{ width: 12, height: 12, borderWidth: 1.5, borderTopColor: 'white' }} />
-            <span>{compiling ? 'Compiling...' : 'Running...'}</span>
+    <>
+      <div className={`statusbar ${compiling || running ? 'busy' : ''}`}>
+        <div className="statusbar-left">
+          {(compiling || running) ? (
+            <div className="statusbar-item accent status-enter">
+              <div className="spinner" style={{ width: 12, height: 12, borderWidth: 1.5, borderTopColor: 'white' }} />
+              <span>{compiling ? 'Compiling...' : 'Running...'}</span>
+            </div>
+          ) : null}
+          <div className={`statusbar-item status-counter ${warningFlash ? 'flash-warning' : ''}`}>
+            <VscWarning />
+            <span>{warningValue}</span>
           </div>
-        ) : null}
-        <div className={`statusbar-item status-counter ${warningFlash ? 'flash-warning' : ''}`}>
-          <VscWarning />
-          <span>{warningValue}</span>
+          <div className={`statusbar-item status-counter ${errorFlash ? 'flash-error' : ''}`}>
+            <VscError />
+            <span>{errorValue}</span>
+          </div>
+          <button 
+            className="statusbar-item statusbar-button" 
+            onClick={() => setDebugPanelOpen(!debugPanelOpen)}
+            title="AI Debug Panel"
+            style={{ 
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              background: debugPanelOpen ? 'var(--bg-highlight)' : 'transparent',
+            }}
+          >
+            <VscBug />
+            <span>AI Debug</span>
+          </button>
         </div>
-        <div className={`statusbar-item status-counter ${errorFlash ? 'flash-error' : ''}`}>
-          <VscError />
-          <span>{errorValue}</span>
+        <div className="statusbar-right">
+          <div className={`statusbar-item status-save ${saveIndicatorState !== 'idle' ? 'visible' : ''}`}>
+            <span className={`status-save-spinner ${saveIndicatorState === 'saving' ? 'active' : ''}`} />
+            <span className={`status-save-check ${saveIndicatorState === 'saved' ? 'active' : ''}`}>✓</span>
+          </div>
+          {cursorPosition ? (
+            <div className="statusbar-item status-enter">
+              <span>Ln {cursorPosition.line}, Col {cursorPosition.column}</span>
+            </div>
+          ) : null}
+          {activeTab ? (
+            <div className="statusbar-item status-enter">
+              <span>{activeTab.language?.toUpperCase() ?? 'PLAIN TEXT'}</span>
+            </div>
+          ) : null}
+          <div className="statusbar-item status-enter">
+            <span>{activeProfileId}</span>
+          </div>
+          <div className="statusbar-item status-enter">
+            <span>{currentTheme.name}</span>
+          </div>
+          <div className="statusbar-item status-enter">
+            <span>UTF-8</span>
+          </div>
         </div>
       </div>
-      <div className="statusbar-right">
-        <div className={`statusbar-item status-save ${saveIndicatorState !== 'idle' ? 'visible' : ''}`}>
-          <span className={`status-save-spinner ${saveIndicatorState === 'saving' ? 'active' : ''}`} />
-          <span className={`status-save-check ${saveIndicatorState === 'saved' ? 'active' : ''}`}>✓</span>
-        </div>
-        {cursorPosition ? (
-          <div className="statusbar-item status-enter">
-            <span>Ln {cursorPosition.line}, Col {cursorPosition.column}</span>
-          </div>
-        ) : null}
-        {activeTab ? (
-          <div className="statusbar-item status-enter">
-            <span>{activeTab.language?.toUpperCase() ?? 'PLAIN TEXT'}</span>
-          </div>
-        ) : null}
-        <div className="statusbar-item status-enter">
-          <span>{activeProfileId}</span>
-        </div>
-        <div className="statusbar-item status-enter">
-          <span>{currentTheme.name}</span>
-        </div>
-        <div className="statusbar-item status-enter">
-          <span>UTF-8</span>
-        </div>
-      </div>
-    </div>
+      {debugPanelOpen && <AIDebugPanel onClose={() => setDebugPanelOpen(false)} />}
+    </>
   );
 }
 

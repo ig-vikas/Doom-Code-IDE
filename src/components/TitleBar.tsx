@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useUIStore } from '../stores';
+import { useAIStore, useUIStore } from '../stores';
 import { useSolveCounterStore } from '../stores/solveCounterStore';
 import MenuBar from './MenuBar';
+import AIStatusBar from './ai/AIStatusBar';
 import { VscChromeMinimize, VscChromeMaximize, VscChromeRestore, VscChromeClose, VscAdd, VscRemove } from 'react-icons/vsc';
 
 // Import the app icon - Vite handles the asset path
@@ -14,6 +15,7 @@ export default function TitleBar() {
   const todayCount = useSolveCounterStore((s) => s.todayCount);
   const increment = useSolveCounterStore((s) => s.increment);
   const decrement = useSolveCounterStore((s) => s.decrement);
+  const showAIStatus = useAIStore((s) => s.config.ui.showStatusInTopBar);
 
   const handleMinimize = useCallback(async () => {
     await getCurrentWindow().minimize();
@@ -64,6 +66,11 @@ export default function TitleBar() {
       <div className="titlebar-center">
         {!windowFocused && <span style={{ opacity: 0.5 }}>Doom Code</span>}
       </div>
+      {showAIStatus ? (
+        <div className="titlebar-ai-slot">
+          <AIStatusBar />
+        </div>
+      ) : null}
       <div className="titlebar-controls">
         <button type="button" className="titlebar-btn" onClick={handleMinimize} aria-label="Minimize">
           <VscChromeMinimize />

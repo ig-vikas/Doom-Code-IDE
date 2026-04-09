@@ -8,12 +8,14 @@ import StatusBar from './components/StatusBar';
 import CommandPalette from './components/CommandPalette';
 import Notifications from './components/Notifications';
 import SettingsPanel from './components/SettingsPanel';
+import DocsPanel from './components/DocsPanel';
 import StartupOverlay from './components/StartupOverlay';
 import BuildProgressBar from './components/BuildProgressBar';
-import { useUIStore, useThemeStore, useSettingsStore, useEditorSchemeStore, useEditorStore, useBuildStore } from './stores';
+import { useUIStore, useThemeStore, useSettingsStore, useEditorSchemeStore, useEditorStore, useBuildStore, useAIStore, useFileExplorerStore } from './stores';
 import { useGlobalKeybindings } from './hooks/useKeybindings';
 import { useResizable } from './hooks/useResizable';
 import { loadConfig } from './services/configService';
+import { aiService } from './services/ai/aiService';
 import {
   initializeCommands,
   saveSession,
@@ -135,11 +137,14 @@ export default function App() {
   const bottomPanelHeight = useUIStore((s) => s.bottomPanelHeight);
   const commandPaletteOpen = useUIStore((s) => s.commandPaletteOpen);
   const settingsOpen = useUIStore((s) => s.settingsOpen);
+  const docsOpen = useUIStore((s) => s.docsOpen);
   const zoomLevel = useUIStore((s) => s.zoomLevel);
   const uiFontSize = useSettingsStore((s) => s.settings.ui.fontSize);
   const uiFontFamily = useSettingsStore((s) => s.settings.ui.fontFamily);
   const statusBarVisible = useSettingsStore((s) => s.settings.ui.statusBarVisible);
   const activityBarVisible = useSettingsStore((s) => s.settings.ui.activityBarVisible);
+  const ghostOpacity = useAIStore((s) => s.config.ui.ghostTextOpacity);
+  const workspaceRoot = useFileExplorerStore((s) => s.rootPath);
   const setTheme = useThemeStore((s) => s.setTheme);
   const currentTheme = useThemeStore((s) => s.currentTheme);
 
@@ -188,6 +193,14 @@ export default function App() {
       }
 
       try {
+        await useAIStore.getState().loadConfig();
+        await useAIStore.getState().hydrateSecureState();
+        await aiService.initialize();
+      } catch (error) {
+        console.error('Failed to initialize AI settings during startup:', error);
+      }
+
+      try {
         try {
           const settings = await loadConfig<AppSettings>('settings.json');
           if (settings && !cancelled) {
@@ -224,6 +237,13 @@ export default function App() {
       window.clearTimeout(startupGuard);
     };
   }, [setTheme]);
+
+  useEffect(() => {
+    if (!workspaceRoot) {
+      return;
+    }
+    void useAIStore.getState().loadConfig();
+  }, [workspaceRoot]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -308,26 +328,23 @@ export default function App() {
   }, [zoomLevel]);
 
   useEffect(() => {
+    document.documentElement.style.setProperty('--ai-ghost-opacity', `${ghostOpacity}`);
+  }, [ghostOpacity]);
+
+  useEffect(() => {
     if (uiFontFamily) {
       document.body.style.fontFamily = uiFontFamily;
     }
   }, [uiFontFamily]);
 
   useEffect(() => {
-    const preventNativeZoom = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+' || e.key === '-' || e.key === '0')) {
-        e.preventDefault();
-      }
-    };
     const preventWheelZoom = (e: WheelEvent) => {
       if (e.ctrlKey) {
         e.preventDefault();
       }
     };
-    window.addEventListener('keydown', preventNativeZoom, { capture: true });
     window.addEventListener('wheel', preventWheelZoom, { passive: false, capture: true });
     return () => {
-      window.removeEventListener('keydown', preventNativeZoom, { capture: true });
       window.removeEventListener('wheel', preventWheelZoom, { capture: true } as EventListenerOptions);
     };
   }, []);
@@ -430,6 +447,7 @@ export default function App() {
         {statusBarVisible ? <StatusBar /> : null}
         {paletteMounted ? <CommandPalette closing={paletteClosing} /> : null}
         <Notifications />
+        {docsOpen ? <DocsPanel /> : null}
       </div>
       {startupVisible ? <StartupOverlay ready={startupReady} onFinished={() => setStartupVisible(false)} /> : null}
     </div>

@@ -5,11 +5,13 @@ import { useThemeStore } from '../stores/themeStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useFileExplorerStore } from '../stores/fileExplorerStore';
 import { useNotificationStore } from '../stores/notificationStore';
+import { useAIStore } from '../stores/aiStore';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { readFileContent, writeFileContent, readDirectoryIfChanged } from './fileService';
 import { compileCpp, runExecutable, killRunningProcess } from './buildService';
 import { runShellCommand } from './systemService';
 import { saveConfigIfChanged, loadConfig } from './configService';
+import { aiService } from './ai/aiService';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { generateId, getFileName, getFileExtension, getLanguageFromExtension, getDirectory } from '../utils/fileUtils';
 
@@ -550,12 +552,35 @@ export function initializeCommands() {
     useUIStore.getState().setSettingsOpen(true);
   });
 
+  registerCommand('help.openDocs', () => {
+    useUIStore.getState().setDocsOpen(true);
+  });
+
   registerCommand('settings.selectTheme', () => {
     useUIStore.getState().setSettingsOpen(true);
   });
 
   registerCommand('settings.openKeybindings', () => {
     useUIStore.getState().setSettingsOpen(true);
+  });
+
+  registerCommand('ai.triggerCompletion', () => {
+    aiService.markNextTriggerKind('manual');
+    if (activeEditor) {
+      const customAction = activeEditor.getAction('ai.triggerSuggestion');
+      if (customAction) {
+        customAction.run();
+        return;
+      }
+
+      const inlineSuggestAction = activeEditor.getAction('editor.action.inlineSuggest.trigger');
+      inlineSuggestAction?.run();
+    }
+  });
+
+  registerCommand('ai.toggle', () => {
+    const ai = useAIStore.getState();
+    ai.setEnabled(!ai.config.enabled);
   });
 
   registerCommand('about.show', () => {

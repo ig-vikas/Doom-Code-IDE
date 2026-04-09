@@ -9,3 +9,28 @@ export type { SplitDirection, SplitNode, FileTab, LayoutState } from './layout';
 export type { Command } from './command';
 export type { MenuDefinition, MenuItemDefinition } from './menu';
 export type { TestCase, Verdict } from './testCase';
+export type {
+  AIProvider,
+  AIStatus,
+  ConnectionStatus,
+  ProviderConfig,
+  ModelDefinition,
+  ModelCapability,
+  AIConfiguration,
+  CompletionSettings,
+  ContextSettings,
+  AIUISettings,
+  CompletionRequest,
+  CompletionPrompt,
+  ChatMessage,
+  CompletionResponse,
+  Completion,
+  AIError,
+  TokenUsage,
+  AIState,
+  ConnectionTestRequest,
+  ConnectionTestResponse,
+  BuiltCompletionContext,
+  ProviderRequestPayload,
+  AIStreamEvent,
+} from './ai';

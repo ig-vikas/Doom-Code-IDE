@@ -1,0 +1,564 @@
+/* Source Serif 4 Font Face */
+@font-face {
+  font-family: 'Source Serif 4';
+  src: url('/fonts/SourceSerif4-VariableFont_opsz,wght.ttf') format('truetype-variations');
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Source Serif 4';
+  src: url('/fonts/SourceSerif4-Italic-VariableFont_opsz,wght.ttf') format('truetype-variations');
+  font-weight: 200 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Claude Dark Theme Colors */
+:root {
+  --claude-bg-deepest: #1a1a1a;
+  --claude-bg-dark: #1f1f1f;
+  --claude-bg-elevated: #2a2a2a;
+  --claude-bg-surface: #2f2f2f;
+  --claude-text-primary: #f5f5f5;
+  --claude-text-secondary: #d4d4d4;
+  --claude-text-muted: #a0a0a0;
+  --claude-orange: #DE7356;
+  --claude-orange-hover: #e88870;
+  --claude-orange-dim: rgba(222, 115, 86, 0.15);
+  --claude-border: #3f3f3f;
+  --claude-border-subtle: #333333;
+  --claude-scrollbar: #404040;
+  --claude-scrollbar-hover: #505050;
+}
+
+.docs-panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.docs-panel-container {
+  background: var(--claude-bg-dark);
+  border: 1px solid var(--claude-border);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 1200px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--claude-orange-dim);
+  animation: slideUp 0.3s ease-out;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  font-weight: 400;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.docs-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem 2rem;
+  border-bottom: 2px solid var(--claude-orange);
+  background: var(--claude-bg-elevated);
+  border-radius: 16px 16px 0 0;
+}
+
+.docs-panel-title {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--claude-text-primary);
+  margin: 0;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  letter-spacing: -0.02em;
+}
+
+.docs-panel-close {
+  background: transparent;
+  border: none;
+  color: var(--claude-text-muted);
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+}
+
+.docs-panel-close:hover {
+  background: var(--claude-orange-dim);
+  color: var(--claude-orange);
+  transform: scale(1.1);
+}
+
+.docs-panel-content {
+  overflow-y: auto;
+  padding: 2rem;
+  flex: 1;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  font-weight: 400;
+  background: var(--claude-bg-dark);
+}
+
+.docs-panel-content::-webkit-scrollbar {
+  width: 14px;
+}
+
+.docs-panel-content::-webkit-scrollbar-track {
+  background: var(--claude-bg-deepest);
+  border-radius: 0 0 16px 0;
+}
+
+.docs-panel-content::-webkit-scrollbar-thumb {
+  background: var(--claude-scrollbar);
+  border-radius: 8px;
+  border: 3px solid var(--claude-bg-deepest);
+}
+
+.docs-panel-content::-webkit-scrollbar-thumb:hover {
+  background: var(--claude-orange);
+}
+
+.docs-section {
+  margin-bottom: 3rem;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  font-weight: 400;
+}
+
+.docs-section:last-child {
+  margin-bottom: 0;
+}
+
+.docs-section h2 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--claude-orange);
+  margin: 0 0 1.25rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid var(--claude-orange);
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  letter-spacing: -0.01em;
+}
+
+.docs-section h3 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--claude-text-primary);
+  margin: 1.75rem 0 1rem 0;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+}
+
+.docs-section h4 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--claude-text-primary);
+  margin: 1.25rem 0 0.75rem 0;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+}
+
+.docs-section p {
+  font-size: 1.05rem;
+  line-height: 1.8;
+  color: var(--claude-text-secondary);
+  margin: 0 0 1rem 0;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  font-weight: 400;
+}
+
+.docs-section ul,
+.docs-section ol {
+  font-size: 1.05rem;
+  line-height: 1.8;
+  color: var(--claude-text-secondary);
+  margin: 0 0 1rem 0;
+  padding-left: 1.75rem;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  font-weight: 400;
+}
+
+.docs-section li {
+  margin-bottom: 0.5rem;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  font-weight: 400;
+}
+
+.docs-section li strong {
+  color: var(--claude-orange);
+  font-weight: 600;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+}
+
+.docs-section code {
+  background: var(--claude-bg-deepest);
+  color: var(--claude-orange);
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", monospace !important;
+  border: 1px solid var(--claude-border-subtle);
+}
+
+.docs-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+  margin: 1.5rem 0;
+}
+
+.docs-profile-card {
+  background: var(--claude-bg-elevated);
+  border: 1px solid var(--claude-border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  transition: all 0.2s ease;
+}
+
+.docs-profile-card:hover {
+  border-color: var(--claude-orange);
+  box-shadow: 0 4px 16px var(--claude-orange-dim);
+  transform: translateY(-2px);
+}
+
+.docs-profile-card h4 {
+  font-size: 1.15rem;
+  color: var(--claude-orange);
+  margin: 0 0 0.5rem 0;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+}
+
+.docs-profile-card p {
+  font-size: 0.95rem;
+  color: var(--claude-text-muted);
+  margin: 0 0 0.75rem 0;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  font-weight: 400;
+}
+
+.docs-profile-card code {
+  display: block;
+  background: var(--claude-bg-deepest);
+  color: var(--claude-text-secondary);
+  padding: 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", monospace !important;
+  border: 1px solid var(--claude-border-subtle);
+}
+
+.docs-ai-providers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.25rem;
+  margin: 1.5rem 0;
+}
+
+.docs-ai-card {
+  background: var(--claude-bg-elevated);
+  border: 1px solid var(--claude-border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  transition: all 0.2s ease;
+}
+
+.docs-ai-card:hover {
+  border-color: var(--claude-orange);
+  box-shadow: 0 4px 16px var(--claude-orange-dim);
+  transform: translateY(-2px);
+}
+
+.docs-ai-card h4 {
+  font-size: 1.15rem;
+  color: var(--claude-orange);
+  margin: 0 0 0.5rem 0;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+}
+
+.docs-ai-card p {
+  font-size: 0.95rem;
+  color: var(--claude-text-muted);
+  margin: 0 0 0.75rem 0;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  font-weight: 400;
+}
+
+.docs-ai-card ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.9rem;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  font-weight: 400;
+}
+
+.docs-ai-card li {
+  margin-bottom: 0.35rem;
+  color: var(--claude-text-secondary);
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  font-weight: 400;
+}
+
+.docs-shortcuts-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  background: var(--claude-bg-elevated);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.docs-shortcuts-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--claude-border-subtle);
+  font-size: 1rem;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  font-weight: 400;
+}
+
+.docs-shortcuts-table td:first-child {
+  width: 200px;
+  font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", monospace !important;
+  color: var(--claude-orange);
+}
+
+.docs-shortcuts-table td:last-child {
+  color: var(--claude-text-secondary);
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  font-weight: 400;
+}
+
+.docs-shortcuts-table tr:hover {
+  background: var(--claude-orange-dim);
+}
+
+.docs-shortcuts-table tr:last-child td {
+  border-bottom: none;
+}
+
+.docs-error-section {
+  background: var(--claude-bg-elevated);
+  border-left: 4px solid var(--claude-orange);
+  padding: 1.25rem;
+  border-radius: 8px;
+  margin: 1rem 0;
+  border: 1px solid var(--claude-border);
+  border-left: 4px solid var(--claude-orange);
+}
+
+.docs-error-section h4 {
+  color: var(--claude-orange);
+  margin-top: 1rem;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+}
+
+.docs-error-section h4:first-child {
+  margin-top: 0;
+}
+
+.docs-error-section p {
+  margin: 0.5rem 0;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  font-weight: 400;
+}
+
+.docs-error-section strong {
+  color: var(--claude-text-primary);
+  font-family: 'Source Serif 4', Georgia, serif !important;
+}
+
+/* GitHub Section Styles */
+.docs-github-card {
+  background: linear-gradient(135deg, var(--claude-bg-elevated) 0%, var(--claude-bg-surface) 100%);
+  border: 2px solid var(--claude-orange);
+  border-radius: 12px;
+  padding: 2rem;
+  margin: 1.5rem 0;
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 16px var(--claude-orange-dim);
+}
+
+.docs-github-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px var(--claude-orange-dim), 0 0 0 1px var(--claude-orange);
+}
+
+.docs-github-icon {
+  color: var(--claude-orange);
+  flex-shrink: 0;
+  padding: 0.75rem;
+  background: var(--claude-orange-dim);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.docs-github-content {
+  flex: 1;
+}
+
+.docs-github-content h3 {
+  margin: 0 0 0.5rem 0;
+  color: var(--claude-text-primary);
+  font-size: 1.4rem;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+}
+
+.docs-github-content p {
+  margin: 0 0 1rem 0;
+  color: var(--claude-text-muted);
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  font-weight: 400;
+}
+
+.docs-github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--claude-orange);
+  color: var(--claude-bg-dark);
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  transition: all 0.2s ease;
+  font-size: 1rem;
+}
+
+.docs-github-link:hover {
+  background: var(--claude-orange-hover);
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px var(--claude-orange-dim);
+}
+
+.docs-github-link svg {
+  width: 16px;
+  height: 16px;
+}
+
+.docs-code-block {
+  display: block;
+  background: var(--claude-bg-deepest);
+  color: var(--claude-text-secondary);
+  padding: 1rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", monospace !important;
+  border: 1px solid var(--claude-border-subtle);
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.docs-customization-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.docs-custom-item {
+  background: var(--claude-bg-elevated);
+  border: 1px solid var(--claude-border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  transition: all 0.2s ease;
+}
+
+.docs-custom-item:hover {
+  border-color: var(--claude-orange);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--claude-orange-dim);
+}
+
+.docs-custom-item h4 {
+  font-size: 1.05rem;
+  color: var(--claude-text-primary);
+  margin: 0 0 0.5rem 0;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+}
+
+.docs-custom-item p {
+  font-size: 0.9rem;
+  color: var(--claude-text-muted);
+  margin: 0;
+  font-family: 'Source Serif 4', Georgia, serif !important;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .docs-panel-overlay {
+    padding: 1rem;
+  }
+
+  .docs-panel-container {
+    max-height: 95vh;
+  }
+
+  .docs-panel-header {
+    padding: 1rem 1.5rem;
+  }
+
+  .docs-panel-title {
+    font-size: 1.5rem;
+  }
+
+  .docs-panel-content {
+    padding: 1.5rem;
+  }
+
+  .docs-section h2 {
+    font-size: 1.5rem;
+  }
+
+  .docs-section h3 {
+    font-size: 1.2rem;
+  }
+
+  .docs-profile-grid,
+  .docs-ai-providers {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-shortcuts-table td:first-child {
+    width: 140px;
+  }
+}

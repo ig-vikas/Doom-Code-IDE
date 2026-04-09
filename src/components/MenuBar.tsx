@@ -18,6 +18,11 @@ export default function MenuBar() {
     }
   }, []);
 
+  const handleDocsClick = useCallback(() => {
+    setOpenMenu(null);
+    executeCommand('help.openDocs');
+  }, []);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuBarRef.current && !menuBarRef.current.contains(e.target as Node)) {
@@ -44,6 +49,14 @@ export default function MenuBar() {
           )}
         </div>
       ))}
+      <button
+        type="button"
+        className="titlebar-menu-item"
+        onClick={handleDocsClick}
+        onMouseEnter={() => setOpenMenu(null)}
+      >
+        Docs
+      </button>
     </div>
   );
 }

@@ -44,9 +44,6 @@ export const defaultCommands: CommandDefinition[] = [
   { id: 'view.toggleSidebar', label: 'Toggle Sidebar', category: 'View', keybinding: 'Ctrl+K Ctrl+B' },
   { id: 'view.toggleTerminal', label: 'Toggle Terminal', category: 'View', keybinding: 'Ctrl+`' },
   { id: 'view.toggleFullscreen', label: 'Toggle Fullscreen', category: 'View', keybinding: 'F11' },
-  { id: 'view.zoomIn', label: 'Zoom In', category: 'View', keybinding: 'Ctrl+=' },
-  { id: 'view.zoomOut', label: 'Zoom Out', category: 'View', keybinding: 'Ctrl+-' },
-  { id: 'view.zoomReset', label: 'Reset Zoom', category: 'View', keybinding: 'Ctrl+0' },
 
   // Build
   { id: 'build.compileAndRun', label: 'Compile & Run', category: 'Build', keybinding: 'Ctrl+B' },
@@ -58,5 +55,6 @@ export const defaultCommands: CommandDefinition[] = [
 
   // Settings
   { id: 'settings.openSettings', label: 'Open Settings', category: 'Settings', keybinding: 'Ctrl+,' },
+  { id: 'help.openDocs', label: 'Open Docs', category: 'Help', keybinding: 'F1' },
   { id: 'about.show', label: 'About Doom Code', category: 'Settings' },
 ];

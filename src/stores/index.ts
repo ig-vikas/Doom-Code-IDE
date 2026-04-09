@@ -8,3 +8,4 @@ export { useUIStore } from './uiStore';
 export { useKeybindingStore } from './keybindingStore';
 export { useSolveCounterStore } from './solveCounterStore';
 export { useEditorSchemeStore } from './editorSchemeStore';
+export { useAIStore } from './aiStore';

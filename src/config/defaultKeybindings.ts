@@ -78,9 +78,6 @@ export const defaultKeybindings: Keybinding[] = [
   { id: 'kb-view-newterm', key: 'ctrl+shift+`', command: 'view.newTerminal', label: 'New Terminal' },
   { id: 'kb-view-fullscreen', key: 'f11', command: 'view.toggleFullscreen', label: 'Toggle Fullscreen' },
   { id: 'kb-view-zen', key: 'shift+f11', command: 'view.toggleZenMode', label: 'Toggle Zen Mode' },
-  { id: 'kb-view-zoomin', key: 'ctrl+=', command: 'view.zoomIn', label: 'Zoom In' },
-  { id: 'kb-view-zoomout', key: 'ctrl+-', command: 'view.zoomOut', label: 'Zoom Out' },
-  { id: 'kb-view-zoomreset', key: 'ctrl+0', command: 'view.zoomReset', label: 'Zoom Reset' },
   { id: 'kb-view-single', key: 'alt+shift+1', command: 'view.layoutSingle', label: 'Single Layout' },
   { id: 'kb-view-2col', key: 'alt+shift+2', command: 'view.layoutTwoColumns', label: 'Two Columns' },
   { id: 'kb-view-3col', key: 'alt+shift+3', command: 'view.layoutThreeColumns', label: 'Three Columns' },
@@ -114,4 +111,9 @@ export const defaultKeybindings: Keybinding[] = [
 
   // SETTINGS
   { id: 'kb-settings-open', key: 'ctrl+,', command: 'settings.openSettings', label: 'Open Settings' },
+  { id: 'kb-help-docs', key: 'f1', command: 'help.openDocs', label: 'Open Docs' },
+
+  // AI
+  { id: 'kb-ai-trigger', key: 'alt+\\', command: 'ai.triggerCompletion', label: 'Trigger AI Completion' },
+  { id: 'kb-ai-toggle', key: 'ctrl+alt+\\', command: 'ai.toggle', label: 'Toggle AI Completion' },
 ];

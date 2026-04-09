@@ -1,0 +1,264 @@
+.model-selector-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 400px;
+  max-height: 600px;
+  background: var(--bg-elevated, #2e2d28);
+  border: 1px solid var(--border-default, #35342e);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.5));
+  z-index: 10000;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.model-selector-dropdown .provider-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border-default, #35342e);
+  background: var(--bg-surface, #252420);
+}
+
+.model-selector-dropdown .provider-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary, #b5b0a8);
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.2s;
+}
+
+.model-selector-dropdown .provider-tab:hover {
+  background: var(--bg-highlight, #35342e);
+}
+
+.model-selector-dropdown .provider-tab.active {
+  background: color-mix(in srgb, var(--accent-primary) 16%, transparent);
+  color: var(--text-primary, #e8e4df);
+  border-color: color-mix(in srgb, var(--accent-primary) 30%, transparent);
+}
+
+.model-selector-dropdown .provider-icon {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.model-selector-dropdown .provider-name {
+  font-weight: 600;
+}
+
+.model-selector-dropdown .connection-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted, #7a766e);
+  margin-left: 2px;
+}
+
+.model-selector-dropdown .connection-dot.connected {
+  background: var(--accent-green, #7ec77e);
+}
+
+.model-selector-dropdown .connection-dot.error {
+  background: var(--accent-red, #e5655b);
+}
+
+.model-selector-dropdown .connection-dot.testing {
+  background: var(--accent-yellow, #d4a94e);
+}
+
+.model-selector-dropdown .model-search {
+  padding: 10px;
+  border-bottom: 1px solid var(--border-default, #35342e);
+}
+
+.model-selector-dropdown .model-search input {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-deepest, #171714);
+  border: 1px solid var(--border-default, #35342e);
+  border-radius: 8px;
+  color: var(--text-primary, #e8e4df);
+  font-size: 12px;
+}
+
+.model-selector-dropdown .model-search input:focus {
+  outline: none;
+  border-color: var(--accent-primary, #da7756);
+}
+
+.model-selector-dropdown .openrouter-section {
+  border-bottom: 1px solid var(--border-default, #35342e);
+}
+
+.model-selector-dropdown .recent-models {
+  padding: 8px;
+}
+
+.model-selector-dropdown .section-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted, #7a766e);
+  padding: 6px 8px;
+  letter-spacing: 0.08em;
+}
+
+.model-selector-dropdown .model-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px 8px;
+}
+
+.model-selector-dropdown .model-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  margin: 2px 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: all 0.2s;
+}
+
+.model-selector-dropdown .model-item:hover {
+  background: color-mix(in srgb, var(--bg-highlight) 70%, transparent);
+  border-color: var(--border-default, #35342e);
+}
+
+.model-selector-dropdown .model-item.selected,
+.model-selector-dropdown .model-item.selected-candidate {
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent-primary) 30%, transparent);
+}
+
+.model-selector-dropdown .model-item.compact {
+  padding: 8px 10px;
+}
+
+.model-selector-dropdown .model-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.model-selector-dropdown .model-display-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e8e4df);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.model-selector-dropdown .recommended-badge {
+  color: var(--accent-yellow, #d4a94e);
+  font-size: 12px;
+}
+
+.model-selector-dropdown .model-cost {
+  font-size: 10px;
+  color: var(--text-muted, #7a766e);
+  background: color-mix(in srgb, var(--bg-elevated) 85%, transparent);
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.model-selector-dropdown .model-cost.free {
+  color: var(--accent-green, #7ec77e);
+  background: color-mix(in srgb, var(--accent-green) 12%, transparent);
+}
+
+.model-selector-dropdown .model-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary, #b5b0a8);
+}
+
+.model-selector-dropdown .model-context {
+  color: var(--text-muted, #7a766e);
+  white-space: nowrap;
+}
+
+.model-selector-dropdown .model-description {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+.model-selector-dropdown .model-capabilities {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.model-selector-dropdown .capability-badge {
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bg-elevated) 85%, transparent);
+}
+
+.model-selector-dropdown .model-id {
+  font-family: var(--font-mono, 'Consolas', monospace);
+  font-size: 11px;
+  color: var(--text-secondary, #b5b0a8);
+}
+
+.model-selector-dropdown .no-models {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted, #7a766e);
+  font-size: 12px;
+}
+
+.model-selector-dropdown .selector-footer {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--border-default, #35342e);
+  background: var(--bg-surface, #252420);
+}
+
+.model-selector-dropdown .test-connection-btn,
+.model-selector-dropdown .settings-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border-default, #35342e);
+  border-radius: 8px;
+  background: var(--bg-deepest, #171714);
+  color: var(--text-primary, #e8e4df);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.model-selector-dropdown .test-connection-btn:hover,
+.model-selector-dropdown .settings-btn:hover {
+  background: var(--bg-highlight, #35342e);
+}
+
+.model-selector-dropdown .test-connection-btn.testing {
+  opacity: 0.65;
+  cursor: not-allowed;
+}

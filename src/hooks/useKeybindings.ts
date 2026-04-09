@@ -1,34 +1,113 @@
 import { useEffect } from 'react';
 import { useKeybindingStore } from '../stores/keybindingStore';
-import { executeCommand } from '../services/commandService';
+import { executeCommand, hasCommand } from '../services/commandService';
 
-function parseKeybinding(binding: string): { ctrl: boolean; shift: boolean; alt: boolean; meta: boolean; key: string } {
-  const parts = binding.toLowerCase().split('+').map((p) => p.trim());
+interface ParsedKeybinding {
+  ctrl: boolean;
+  shift: boolean;
+  alt: boolean;
+  meta: boolean;
+  key: string;
+}
+
+const CTRL_TOKENS = new Set(['ctrl', 'control']);
+const SHIFT_TOKENS = new Set(['shift']);
+const ALT_TOKENS = new Set(['alt', 'option']);
+const META_TOKENS = new Set(['meta', 'cmd', 'command', 'win', 'super']);
+
+const KEY_ALIASES: Record<string, string> = {
+  esc: 'escape',
+  return: 'enter',
+  ' ': 'space',
+  spacebar: 'space',
+  arrowup: 'up',
+  arrowdown: 'down',
+  arrowleft: 'left',
+  arrowright: 'right',
+};
+
+function normalizeKeyToken(input: string): string {
+  const token = input.trim().toLowerCase();
+  return KEY_ALIASES[token] ?? token;
+}
+
+function isModifierToken(token: string): boolean {
+  return CTRL_TOKENS.has(token) || SHIFT_TOKENS.has(token) || ALT_TOKENS.has(token) || META_TOKENS.has(token);
+}
+
+function parseKeybinding(binding: string): ParsedKeybinding | null {
+  if (typeof binding !== 'string') {
+    return null;
+  }
+
+  const parts = binding
+    .toLowerCase()
+    .split('+')
+    .map((part) => normalizeKeyToken(part))
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return null;
+  }
+
+  const key = parts[parts.length - 1];
+  if (!key || isModifierToken(key)) {
+    return null;
+  }
+
   return {
-    ctrl: parts.includes('ctrl'),
-    shift: parts.includes('shift'),
-    alt: parts.includes('alt'),
-    meta: parts.includes('meta') || parts.includes('cmd'),
-    key: parts[parts.length - 1],
+    ctrl: parts.some((part) => CTRL_TOKENS.has(part)),
+    shift: parts.some((part) => SHIFT_TOKENS.has(part)),
+    alt: parts.some((part) => ALT_TOKENS.has(part)),
+    meta: parts.some((part) => META_TOKENS.has(part)),
+    key,
   };
 }
 
-function matchesEvent(e: KeyboardEvent, parsed: ReturnType<typeof parseKeybinding>): boolean {
+function matchesEvent(e: KeyboardEvent, parsed: ParsedKeybinding): boolean {
   if (e.ctrlKey !== parsed.ctrl) return false;
   if (e.shiftKey !== parsed.shift) return false;
   if (e.altKey !== parsed.alt) return false;
   if (e.metaKey !== parsed.meta) return false;
-  return e.key.toLowerCase() === parsed.key;
+
+  const eventKey = normalizeKeyToken(e.key.toLowerCase());
+  if (eventKey === parsed.key) {
+    return true;
+  }
+
+  // Keep punctuation key matching stable across keyboard layouts.
+  if (parsed.key === '\\') return e.code === 'Backslash';
+  if (parsed.key === '`') return e.code === 'Backquote';
+  if (parsed.key === '/') return e.code === 'Slash';
+  if (parsed.key === '[') return e.code === 'BracketLeft';
+  if (parsed.key === ']') return e.code === 'BracketRight';
+  if (parsed.key === ',') return e.code === 'Comma';
+  if (parsed.key === '.') return e.code === 'Period';
+  if (parsed.key === '-') return e.code === 'Minus';
+  if (parsed.key === '=') return e.code === 'Equal';
+
+  return false;
 }
 
-function parseKeybindingSequence(binding: string) {
-  return binding
-    .trim()
-    .split(/\s+/)
-    .map(parseKeybinding);
+function parseKeybindingSequence(binding: string): ParsedKeybinding[] | null {
+  if (typeof binding !== 'string') {
+    return null;
+  }
+
+  const chunks = binding.trim().split(/\s+/).filter(Boolean);
+  if (chunks.length === 0) {
+    return null;
+  }
+
+  const parsed = chunks.map(parseKeybinding);
+  if (parsed.some((entry) => !entry)) {
+    return null;
+  }
+
+  return parsed as ParsedKeybinding[];
 }
 
-// Commands that should work even when typing in inputs
+// Commands that should work even when typing in inputs.
 const GLOBAL_COMMANDS = new Set([
   'file.nextTab', 'file.previousTab', 'file.closeTab', 'file.save',
   'file.saveAs', 'file.saveAll', 'file.reopenClosedTab', 'file.newFile',
@@ -37,6 +116,7 @@ const GLOBAL_COMMANDS = new Set([
   'view.toggleSidebar', 'view.toggleTerminal', 'view.toggleFullscreen',
   'view.zoomIn', 'view.zoomOut', 'view.zoomReset',
   'settings.openSettings',
+  'ai.triggerCompletion', 'ai.toggle',
   'build.compileAndRun', 'build.compileOnly', 'build.runOnly',
   'build.build', 'build.killProcess', 'build.runAllTestCases',
 ]);
@@ -46,39 +126,76 @@ export function useGlobalKeybindings() {
 
   useEffect(() => {
     const bindings = useKeybindingStore.getState().getEffectiveBindings();
-    const parsedBindings = bindings.map((kb) => ({
-      command: kb.command,
-      sequence: parseKeybindingSequence(kb.key),
-    }));
+    const parsedBindings = bindings
+      .map((kb) => {
+        const sequence = parseKeybindingSequence(kb.key);
+        if (!sequence) {
+          return null;
+        }
+
+        return {
+          command: kb.command,
+          sequence,
+        };
+      })
+      .filter((entry): entry is { command: string; sequence: ParsedKeybinding[] } => !!entry);
 
     let pendingBindings: typeof parsedBindings = [];
     let pendingIndex = 0;
+    let pendingFallbackCommand: string | null = null;
     let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 
     const clearPending = () => {
       pendingBindings = [];
       pendingIndex = 0;
+      pendingFallbackCommand = null;
       if (pendingTimer) {
         clearTimeout(pendingTimer);
         pendingTimer = null;
       }
     };
 
-    const armPending = (candidates: typeof parsedBindings, nextIndex: number) => {
+    const runCommand = (command: string): boolean => {
+      if (!hasCommand(command)) {
+        return false;
+      }
+      executeCommand(command);
+      return true;
+    };
+
+    const armPending = (
+      candidates: typeof parsedBindings,
+      nextIndex: number,
+      fallbackCommand: string | null
+    ) => {
       pendingBindings = candidates;
       pendingIndex = nextIndex;
-      if (pendingTimer) clearTimeout(pendingTimer);
+      pendingFallbackCommand = fallbackCommand;
+
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+      }
+
       pendingTimer = setTimeout(() => {
+        const fallback = pendingFallbackCommand;
         clearPending();
-      }, 1500);
+        if (fallback) {
+          runCommand(fallback);
+        }
+      }, 1000);
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const isInput =
+      if (e.defaultPrevented || e.isComposing) {
+        return;
+      }
+
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      const isInput = !!target && (
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
-        target.isContentEditable;
+        target.isContentEditable
+      );
 
       const isAllowed = (command: string) => !isInput || GLOBAL_COMMANDS.has(command);
 
@@ -88,7 +205,10 @@ export function useGlobalKeybindings() {
         );
 
         if (nextMatches.length > 0) {
-          const allowedMatches = nextMatches.filter((binding) => isAllowed(binding.command));
+          const allowedMatches = nextMatches.filter(
+            (binding) => isAllowed(binding.command) && hasCommand(binding.command)
+          );
+
           if (allowedMatches.length === 0) {
             clearPending();
             return;
@@ -100,11 +220,11 @@ export function useGlobalKeybindings() {
           const completed = allowedMatches.find((binding) => binding.sequence.length === pendingIndex + 1);
           if (completed) {
             clearPending();
-            executeCommand(completed.command);
+            runCommand(completed.command);
             return;
           }
 
-          armPending(allowedMatches, pendingIndex + 1);
+          armPending(allowedMatches, pendingIndex + 1, pendingFallbackCommand);
           return;
         }
 
@@ -112,22 +232,33 @@ export function useGlobalKeybindings() {
       }
 
       const firstMatches = parsedBindings.filter((binding) => matchesEvent(e, binding.sequence[0]));
-      if (firstMatches.length === 0) return;
-
-      const allowedMatches = firstMatches.filter((binding) => isAllowed(binding.command));
-      if (allowedMatches.length === 0) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-
-      const immediate = allowedMatches.find((binding) => binding.sequence.length === 1);
-      if (immediate) {
-        clearPending();
-        executeCommand(immediate.command);
+      if (firstMatches.length === 0) {
         return;
       }
 
-      armPending(allowedMatches, 1);
+      const allowedMatches = firstMatches.filter(
+        (binding) => isAllowed(binding.command) && hasCommand(binding.command)
+      );
+      if (allowedMatches.length === 0) {
+        return;
+      }
+
+      const immediate = allowedMatches.find((binding) => binding.sequence.length === 1);
+      const chordMatches = allowedMatches.filter((binding) => binding.sequence.length > 1);
+
+      if (chordMatches.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        armPending(chordMatches, 1, immediate?.command ?? null);
+        return;
+      }
+
+      if (immediate) {
+        e.preventDefault();
+        e.stopPropagation();
+        clearPending();
+        runCommand(immediate.command);
+      }
     };
 
     window.addEventListener('keydown', onKeyDown, true);
@@ -139,5 +270,5 @@ export function useGlobalKeybindings() {
 }
 
 export function useKeybindings(_handlers: Record<string, () => void>) {
-  // No-op — all keybindings now use the command service
+  // No-op: all keybindings now use the command service.
 }

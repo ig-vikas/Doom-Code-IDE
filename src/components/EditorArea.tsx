@@ -2,6 +2,7 @@ import { useCallback, useRef, useEffect, useState } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
 import { useEditorStore, useThemeStore, useSettingsStore, useEditorSchemeStore, useUIStore } from '../stores';
+import { useInlineCompletion } from '../hooks/useInlineCompletion';
 import { useAutoSave } from '../hooks/useAutoSave';
 import { writeFileContent } from '../services/fileService';
 import { useNotificationStore } from '../stores';
@@ -10,6 +11,7 @@ import { useSnippetStore } from '../stores/snippetStore';
 import { formatTimestamp } from '../utils/timestamp';
 import type { FileTab, SplitNode } from '../types';
 import TabBar, { TAB_DRAG_TYPE } from './TabBar';
+import InlineHint from './ai/InlineHint';
 import { VscSplitHorizontal, VscSplitVertical, VscClose } from 'react-icons/vsc';
 
 // Track globally whether snippets have been registered (avoids duplicates)
@@ -194,6 +196,10 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
   const [editorSwitching, setEditorSwitching] = useState(false);
   const [typingStreak, setTypingStreak] = useState(0);
   const [typingStreakVisible, setTypingStreakVisible] = useState(false);
+  const [inlineEditor, setInlineEditor] = useState<{
+    editor: editor.IStandaloneCodeEditor;
+    monaco: typeof import('monaco-editor');
+  } | null>(null);
 
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof import('monaco-editor') | null>(null);
@@ -206,6 +212,11 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
   const streakCooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
+  const inlineCompletion = useInlineCompletion({
+    editor: inlineEditor?.editor ?? null,
+    monaco: inlineEditor?.monaco ?? null,
+    activeTab,
+  });
 
   const restoreEditorViewState = useCallback(
     (tab: FileTab | null, revealInCenter = false) => {
@@ -364,6 +375,7 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
     (editor, monaco) => {
       editorRef.current = editor;
       monacoRef.current = monaco;
+      setInlineEditor({ editor, monaco });
 
       // Register editor color scheme
       try {
@@ -517,7 +529,18 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
       restoreEditorViewState(activeTab, true);
       setCursorPosition(viewState.line, viewState.column);
     }
-  }, [activeTab?.id, activeTab?.path, getTabViewState, restoreEditorViewState, setCursorPosition]);
+    
+    // Cleanup: persist view state when switching away from this tab
+    return () => {
+      if (activeTab && editorRef.current) {
+        const pos = editorRef.current.getPosition();
+        if (pos) {
+          updateCursorPosition(groupId, activeTab.id, pos.lineNumber, pos.column);
+        }
+        updateScrollPosition(groupId, activeTab.id, editorRef.current.getScrollTop());
+      }
+    };
+  }, [activeTab?.id, activeTab?.path, getTabViewState, restoreEditorViewState, setCursorPosition, groupId, updateCursorPosition, updateScrollPosition]);
 
   // If the file content is refreshed from disk, restore the previous view state.
   useEffect(() => {
@@ -554,6 +577,7 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
 
   useEffect(() => {
     return () => {
+      setInlineEditor(null);
       if (streakPauseTimerRef.current) {
         clearTimeout(streakPauseTimerRef.current);
       }
@@ -642,10 +666,12 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
           >
             {typingStreak}
           </div>
+          <InlineHint />
           <div className={`monaco-wrapper ${settings.editor.fontStyle === 'italic' ? 'font-italic' : ''}`}>
             <Editor
               key={activeTab.id}
               height="100%"
+              path={activeTab.path || `untitled://${activeTab.id}/${activeTab.name || 'untitled'}`}
               language={activeTab.language}
               value={activeTab.content}
               theme={currentScheme.id}
@@ -686,9 +712,16 @@ function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
                 scrollBeyondLastLine: false,
                 automaticLayout: true,
                 padding: { top: 8 },
+                inlineSuggest: {
+                  enabled: true,
+                  mode: 'prefix',
+                  suppressSuggestions: false,
+                } as any,
                 suggest: {
                   showSnippets: settings.editor.snippetSuggestions !== 'none',
                   snippetsPreventQuickSuggestions: false,
+                  preview: true,
+                  previewMode: 'prefix' as any,
                 },
                 snippetSuggestions: settings.editor.snippetSuggestions,
                 suggestOnTriggerCharacters: settings.editor.suggestOnTriggerCharacters,
