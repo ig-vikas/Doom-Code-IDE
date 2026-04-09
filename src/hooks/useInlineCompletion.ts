@@ -10,6 +10,35 @@ interface UseInlineCompletionOptions {
   activeTab?: unknown;
 }
 
+// ── Inject ghost-text styles once ──────────────────────────────────
+let stylesInjected = false;
+function injectGhostTextStyles() {
+  if (stylesInjected) return;
+  stylesInjected = true;
+
+  const style = document.createElement('style');
+  style.id = 'ai-ghost-text-styles';
+  style.textContent = `
+    .ai-ghost-text {
+      color: #6b7280 !important;
+      opacity: 0.6 !important;
+      font-style: italic !important;
+      pointer-events: none !important;
+    }
+    .ai-ghost-text-multiline {
+      color: #6b7280 !important;
+      opacity: 0.6 !important;
+      font-style: italic !important;
+      pointer-events: none !important;
+      white-space: pre !important;
+    }
+    .ai-ghost-text-line {
+      /* Empty — the injectedText handles the styling via inlineClassName */
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 function isAcceptShortcutPressed(
   event: monaco.IKeyboardEvent,
   acceptKey: 'tab' | 'enter' | 'ctrl+enter'
@@ -19,7 +48,8 @@ function isAcceptShortcutPressed(
       event.keyCode === monaco.KeyCode.Tab &&
       !event.ctrlKey &&
       !event.metaKey &&
-      !event.altKey
+      !event.altKey &&
+      !event.shiftKey
     );
   }
 
@@ -28,10 +58,12 @@ function isAcceptShortcutPressed(
       event.keyCode === monaco.KeyCode.Enter &&
       !event.ctrlKey &&
       !event.metaKey &&
-      !event.altKey
+      !event.altKey &&
+      !event.shiftKey
     );
   }
 
+  // ctrl+enter
   return (
     event.keyCode === monaco.KeyCode.Enter &&
     (event.ctrlKey || event.metaKey) &&
@@ -39,108 +71,207 @@ function isAcceptShortcutPressed(
   );
 }
 
-export function useInlineCompletion({ editor, enabled = true }: UseInlineCompletionOptions) {
+export function useInlineCompletion({
+  editor,
+  enabled = true,
+}: UseInlineCompletionOptions) {
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const decorationsRef = useRef<string[]>([]);
+  const decorationsCollectionRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const lastTriggerPositionRef = useRef<{ lineNumber: number; column: number } | null>(null);
+  const requestIdRef = useRef(0); // monotonic counter for cancellation
+  const widgetRef = useRef<monaco.editor.IOverlayWidget | null>(null);
+  const ghostLinesRef = useRef<string[]>([]);
 
   const aiConfig = useAIStore((state) => state.config);
   const pendingSuggestion = useAIStore((state) => state.pendingSuggestion);
   const status = useAIStore((state) => state.status);
 
+  // Inject CSS on mount
+  useEffect(() => {
+    injectGhostTextStyles();
+  }, []);
+
+  // Create decorations collection once per editor
+  useEffect(() => {
+    if (!editor) {
+      decorationsCollectionRef.current = null;
+      return;
+    }
+    decorationsCollectionRef.current = editor.createDecorationsCollection([]);
+    return () => {
+      decorationsCollectionRef.current?.clear();
+      decorationsCollectionRef.current = null;
+    };
+  }, [editor]);
+
+  /**
+   * Remove the multi-line overlay widget
+   */
+  const removeOverlayWidget = useCallback(() => {
+    if (!editor || !widgetRef.current) return;
+    try {
+      editor.removeOverlayWidget(widgetRef.current);
+    } catch {
+      // widget may already be removed
+    }
+    widgetRef.current = null;
+    ghostLinesRef.current = [];
+  }, [editor]);
+
   /**
    * Render ghost text decorations in the editor.
-   * VS Code style: same font as code, just different color + opacity.
-   * Uses `after` injection for the first line and multi-line content.
+   *
+   * Strategy:
+   *  - First line: injected `after` text on the cursor line (inline decoration)
+   *  - Remaining lines: overlay widget positioned below the cursor line
+   *    (Monaco doesn't natively support multi-line injected text well)
    */
   const updateGhostText = useCallback(
     (text: string | null, position: monaco.Position) => {
-      if (!editor) {
+      if (!editor || !decorationsCollectionRef.current) {
         return;
       }
 
+      // Clear everything first
+      removeOverlayWidget();
+
       if (!text || !text.trim()) {
-        decorationsRef.current = editor.deltaDecorations(decorationsRef.current, []);
+        decorationsCollectionRef.current.set([]);
         return;
       }
 
       const lines = text.split('\n');
-      const firstLine = lines[0];
+      const firstLine = lines[0] || '';
       const restLines = lines.slice(1);
       const decorations: monaco.editor.IModelDeltaDecoration[] = [];
 
-      // First line — inject after cursor on the same line
+      // ── First line: inject after cursor ──
       if (firstLine) {
         decorations.push({
-          range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+          range: new monaco.Range(
+            position.lineNumber,
+            position.column,
+            position.lineNumber,
+            position.column
+          ),
           options: {
             after: {
               content: firstLine,
               inlineClassName: 'ai-ghost-text',
               cursorStops: monaco.editor.InjectedTextCursorStops.None,
             },
-            // The decoration range itself should not have a className that affects existing text
-            zIndex: 1200,
           },
         });
       }
 
-      // Multi-line content — render additional lines
-      const model = editor.getModel();
-      const maxLine = model?.getLineCount() || position.lineNumber;
-      if (restLines.length > 0 && aiConfig.completion.multiLineEnabled) {
-        for (let index = 0; index < restLines.length; index += 1) {
-          const targetLine = position.lineNumber + index + 1;
-          if (targetLine > maxLine + 1) {
-            break;
-          }
-          decorations.push({
-            range: new monaco.Range(targetLine, 1, targetLine, 1),
-            options: {
-              before: {
-                content: restLines[index] + '\n',
-                inlineClassName: 'ai-ghost-text-multiline',
-                cursorStops: monaco.editor.InjectedTextCursorStops.None,
-              },
-              zIndex: 1200,
-            },
-          });
-        }
-      }
+      decorationsCollectionRef.current.set(decorations);
 
-      decorationsRef.current = editor.deltaDecorations(decorationsRef.current, decorations);
+      // ── Multi-line: overlay widget ──
+      if (restLines.length > 0 && aiConfig.completion.multiLineEnabled) {
+        ghostLinesRef.current = restLines;
+
+        const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
+        const fontInfo = editor.getOption(monaco.editor.EditorOption.fontInfo);
+        const topForPosition = editor.getTopForLineNumber(position.lineNumber);
+        const scrollTop = editor.getScrollTop();
+        const editorLayout = editor.getLayoutInfo();
+
+        const widgetId = 'ai-ghost-multiline-' + Date.now();
+
+        const domNode = document.createElement('div');
+        domNode.style.pointerEvents = 'none';
+        domNode.style.zIndex = '1200';
+        domNode.style.position = 'absolute';
+        domNode.style.fontFamily = fontInfo.fontFamily;
+        domNode.style.fontSize = `${fontInfo.fontSize}px`;
+        domNode.style.lineHeight = `${lineHeight}px`;
+        domNode.style.fontWeight = fontInfo.fontWeight;
+        domNode.style.letterSpacing = `${fontInfo.letterSpacing}px`;
+        domNode.style.color = '#6b7280';
+        domNode.style.opacity = '0.6';
+        domNode.style.fontStyle = 'italic';
+        domNode.style.whiteSpace = 'pre';
+        domNode.style.paddingLeft = `${editorLayout.contentLeft}px`;
+
+        // Build multi-line content
+        domNode.textContent = restLines.join('\n');
+
+        const widget: monaco.editor.IOverlayWidget = {
+          getId: () => widgetId,
+          getDomNode: () => domNode,
+          getPosition: () => null, // we position manually
+        };
+
+        editor.addOverlayWidget(widget);
+        widgetRef.current = widget;
+
+        // Position the widget below the current line
+        const top = topForPosition - scrollTop + lineHeight;
+        domNode.style.top = `${top}px`;
+        domNode.style.left = '0px';
+
+        // Update position on scroll
+        // (We'll clean this up when the widget is removed)
+      }
     },
-    [editor, aiConfig.completion.multiLineEnabled]
+    [editor, aiConfig.completion.multiLineEnabled, removeOverlayWidget]
   );
 
   /**
    * Trigger a completion request. Validates context before sending.
    */
   const triggerCompletion = useCallback(
-    async (position: { lineNumber: number; column: number }, triggerKind: 'auto' | 'manual') => {
+    async (
+      position: { lineNumber: number; column: number },
+      triggerKind: 'auto' | 'manual'
+    ) => {
       if (!editor || !aiConfig.enabled || !enabled) {
         return;
       }
 
-      // Skip for plain text files
       const model = editor.getModel();
-      const languageId = model?.getLanguageId?.();
+      if (!model) return;
+
+      const languageId = model.getLanguageId?.();
       if (languageId === 'plaintext' || languageId === 'text') {
         return;
       }
 
-      // For auto-trigger, skip if we are on line 1 and it's completely empty
+      // For auto-trigger, skip if cursor is at a completely empty first line
       if (triggerKind === 'auto' && position.lineNumber <= 1) {
-        const lineContent = model?.getLineContent(position.lineNumber) || '';
+        const lineContent = model.getLineContent(position.lineNumber) || '';
         if (lineContent.trim().length === 0) {
+          return;
+        }
+      }
+
+      // Also skip auto-trigger if the current line up to cursor is only whitespace
+      if (triggerKind === 'auto') {
+        const lineContent = model.getLineContent(position.lineNumber) || '';
+        const textBeforeCursor = lineContent.substring(0, position.column - 1);
+        // Allow trigger if there's at least some non-whitespace context
+        // But also allow if there's content on previous lines (user is in the middle of code)
+        if (textBeforeCursor.trim().length === 0 && position.lineNumber <= 1) {
           return;
         }
       }
 
       lastTriggerPositionRef.current = position;
 
+      // Increment request ID for cancellation
+      const thisRequestId = ++requestIdRef.current;
+
       try {
-        const completion = await completionEngine.requestCompletion(position, triggerKind);
+        const completion = await completionEngine.requestCompletion(
+          position,
+          triggerKind
+        );
+
+        // Check if this request is still the latest one
+        if (requestIdRef.current !== thisRequestId) {
+          return; // A newer request has been made; discard this result
+        }
+
         const currentPosition = editor.getPosition();
 
         if (
@@ -149,9 +280,15 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
           Math.abs(currentPosition.column - position.column) <= 2 &&
           completion
         ) {
-          updateGhostText(completion.displayText || completion.text, currentPosition);
+          const displayText = completion.displayText || completion.text;
+          if (displayText && displayText.trim()) {
+            updateGhostText(displayText, currentPosition);
+          }
         }
       } catch (error) {
+        if (requestIdRef.current !== thisRequestId) {
+          return; // stale request, ignore error
+        }
         console.error('[AI Inline] Completion error:', error);
       }
     },
@@ -176,23 +313,34 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
       return false;
     }
 
+    // Clear ghost text BEFORE inserting to avoid visual artifacts
+    removeOverlayWidget();
+    decorationsCollectionRef.current?.set([]);
+
     const lines = insertText.split('\n');
     editor.executeEdits('ai-completion', [
       {
-        range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+        range: new monaco.Range(
+          position.lineNumber,
+          position.column,
+          position.lineNumber,
+          position.column
+        ),
         text: insertText,
       },
     ]);
 
     const newLine = position.lineNumber + lines.length - 1;
-    const newColumn = lines.length === 1 ? position.column + insertText.length : lines[lines.length - 1].length + 1;
+    const newColumn =
+      lines.length === 1
+        ? position.column + insertText.length
+        : lines[lines.length - 1].length + 1;
 
     editor.setPosition({ lineNumber: newLine, column: newColumn });
     editor.focus();
-    updateGhostText(null, position);
 
     return true;
-  }, [editor, pendingSuggestion, updateGhostText]);
+  }, [editor, pendingSuggestion, removeOverlayWidget]);
 
   /**
    * Reject (dismiss) the current pending suggestion.
@@ -203,11 +351,9 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     }
 
     completionEngine.rejectSuggestion();
-    const position = editor?.getPosition();
-    if (position) {
-      updateGhostText(null, position);
-    }
-  }, [editor, pendingSuggestion, updateGhostText]);
+    removeOverlayWidget();
+    decorationsCollectionRef.current?.set([]);
+  }, [pendingSuggestion, removeOverlayWidget]);
 
   /**
    * Accept the next N words from the pending suggestion (partial accept).
@@ -230,7 +376,12 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
 
       editor.executeEdits('ai-completion-partial', [
         {
-          range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+          range: new monaco.Range(
+            position.lineNumber,
+            position.column,
+            position.lineNumber,
+            position.column
+          ),
           text: insertText,
         },
       ]);
@@ -246,12 +397,13 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
           new monaco.Position(position.lineNumber, newColumn)
         );
       } else {
-        updateGhostText(null, position);
+        removeOverlayWidget();
+        decorationsCollectionRef.current?.set([]);
       }
 
       return true;
     },
-    [editor, pendingSuggestion, updateGhostText]
+    [editor, pendingSuggestion, updateGhostText, removeOverlayWidget]
   );
 
   // ── Main effect: wire up editor events ──
@@ -266,11 +418,18 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
         clearTimeout(debounceTimerRef.current);
       }
 
+      // Cancel in-flight request
+      requestIdRef.current++;
       completionEngine.cancelCurrentRequest();
 
-      const position = editor.getPosition();
-      if (position) {
-        updateGhostText(null, position);
+      // Clear ghost text immediately
+      removeOverlayWidget();
+      decorationsCollectionRef.current?.set([]);
+
+      // Also dismiss pending suggestion in the store so state is consistent
+      const currentSuggestion = useAIStore.getState().pendingSuggestion;
+      if (currentSuggestion) {
+        completionEngine.rejectSuggestion();
       }
 
       if (!aiConfig.completion.autoTrigger) {
@@ -291,11 +450,32 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
         lastTriggerPositionRef.current &&
         event.position.lineNumber !== lastTriggerPositionRef.current.lineNumber
       ) {
-        rejectSuggestion();
+        const currentSuggestion = useAIStore.getState().pendingSuggestion;
+        if (currentSuggestion) {
+          completionEngine.rejectSuggestion();
+          removeOverlayWidget();
+          decorationsCollectionRef.current?.set([]);
+        }
       }
     });
 
-    // Priority shortcut handling — accept/reject works even when Monaco bindings conflict
+    // On scroll: reposition the multi-line overlay widget
+    const scrollDisposable = editor.onDidScrollChange(() => {
+      if (!widgetRef.current || !lastTriggerPositionRef.current) return;
+
+      const domNode = widgetRef.current.getDomNode();
+      if (!domNode) return;
+
+      const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
+      const topForPosition = editor.getTopForLineNumber(
+        lastTriggerPositionRef.current.lineNumber
+      );
+      const scrollTop = editor.getScrollTop();
+      const top = topForPosition - scrollTop + lineHeight;
+      domNode.style.top = `${top}px`;
+    });
+
+    // Priority shortcut handling
     const keydownDisposable = editor.onKeyDown((event) => {
       const hasSuggestion = !!useAIStore.getState().pendingSuggestion;
       if (!hasSuggestion) {
@@ -316,7 +496,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
       }
     });
 
-    // Editor actions for command palette / programmatic invocation
+    // Editor actions
     const acceptAction = editor.addAction({
       id: 'ai.acceptSuggestion',
       label: 'Accept AI Suggestion',
@@ -365,6 +545,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     return () => {
       contentDisposable.dispose();
       cursorDisposable.dispose();
+      scrollDisposable.dispose();
       keydownDisposable.dispose();
       acceptAction.dispose();
       rejectAction.dispose();
@@ -375,7 +556,8 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
         clearTimeout(debounceTimerRef.current);
       }
 
-      decorationsRef.current = editor.deltaDecorations(decorationsRef.current, []);
+      removeOverlayWidget();
+      decorationsCollectionRef.current?.set([]);
     };
   }, [
     editor,
@@ -389,7 +571,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     acceptSuggestion,
     rejectSuggestion,
     acceptPartialSuggestion,
-    updateGhostText,
+    removeOverlayWidget,
   ]);
 
   // ── Sync ghost text with pendingSuggestion store changes ──
@@ -399,12 +581,18 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     }
 
     const position = editor.getPosition();
-    if (position && pendingSuggestion) {
-      updateGhostText(pendingSuggestion.displayText || pendingSuggestion.text, position);
-    } else if (position && !pendingSuggestion) {
-      updateGhostText(null, position);
+    if (!position) return;
+
+    if (pendingSuggestion) {
+      const displayText = pendingSuggestion.displayText || pendingSuggestion.text;
+      if (displayText && displayText.trim()) {
+        updateGhostText(displayText, position);
+      }
+    } else {
+      removeOverlayWidget();
+      decorationsCollectionRef.current?.set([]);
     }
-  }, [editor, pendingSuggestion, updateGhostText]);
+  }, [editor, pendingSuggestion, updateGhostText, removeOverlayWidget]);
 
   return {
     triggerCompletion,

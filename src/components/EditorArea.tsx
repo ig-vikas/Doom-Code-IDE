@@ -1,764 +1,654 @@
-import { useCallback, useRef, useEffect, useState } from 'react';
-import Editor, { OnMount } from '@monaco-editor/react';
-import type { editor } from 'monaco-editor';
-import { useEditorStore, useThemeStore, useSettingsStore, useEditorSchemeStore, useUIStore } from '../stores';
-import { useInlineCompletion } from '../hooks/useInlineCompletion';
-import { useAutoSave } from '../hooks/useAutoSave';
-import { writeFileContent } from '../services/fileService';
-import { useNotificationStore } from '../stores';
-import { setActiveEditor } from '../services/commandService';
-import { useSnippetStore } from '../stores/snippetStore';
-import { formatTimestamp } from '../utils/timestamp';
-import type { FileTab, SplitNode } from '../types';
-import TabBar, { TAB_DRAG_TYPE } from './TabBar';
-import InlineHint from './ai/InlineHint';
-import { VscSplitHorizontal, VscSplitVertical, VscClose } from 'react-icons/vsc';
+import { useEffect, useRef, useCallback } from 'react';
+import * as monaco from 'monaco-editor';
+import { useAIStore } from '../stores/aiStore';
+import { completionEngine } from '../services/ai/completionEngine';
 
-// Track globally whether snippets have been registered (avoids duplicates)
-let snippetsRegistered = false;
-
-// Global tab drag tracking — so we can show overlay over Monaco during drags
-let globalDragActive = false;
-const dragListeners = new Set<(active: boolean) => void>();
-
-function setGlobalDragActive(active: boolean) {
-  globalDragActive = active;
-  dragListeners.forEach((fn) => fn(active));
+interface UseInlineCompletionOptions {
+  editor: monaco.editor.IStandaloneCodeEditor | null;
+  enabled?: boolean;
+  monaco?: typeof import('monaco-editor') | null;
+  activeTab?: { id: string; path?: string; language?: string; content?: string } | null;
 }
 
-function useGlobalDragActive() {
-  const [active, setActive] = useState(false);
-  useEffect(() => {
-    const handler = (v: boolean) => setActive(v);
-    dragListeners.add(handler);
-    return () => { dragListeners.delete(handler); };
-  }, []);
-  return active;
-}
+// ── Inject ghost-text styles once ──────────────────────────────────
+let stylesInjected = false;
+function injectGhostTextStyles() {
+  if (stylesInjected || typeof document === 'undefined') return;
+  stylesInjected = true;
 
-// Listen for any tab drag start/end at the window level
-if (typeof window !== 'undefined') {
-  let dragSafetyTimer: ReturnType<typeof setTimeout> | null = null;
-  const clearDragState = () => {
-    setGlobalDragActive(false);
-    if (dragSafetyTimer) { clearTimeout(dragSafetyTimer); dragSafetyTimer = null; }
-  };
-  window.addEventListener('dragstart', (e) => {
-    const target = e.target as HTMLElement;
-    if (target?.closest?.('.tab')) {
-      setGlobalDragActive(true);
-      // Safety: force-clear after 5s in case dragend never fires
-      if (dragSafetyTimer) clearTimeout(dragSafetyTimer);
-      dragSafetyTimer = setTimeout(clearDragState, 5000);
+  const style = document.createElement('style');
+  style.id = 'ai-ghost-text-styles';
+  style.textContent = `
+    .ai-ghost-text {
+      color: #6b7280 !important;
+      opacity: 0.7 !important;
+      font-style: italic !important;
+      pointer-events: none !important;
+      user-select: none !important;
     }
-  }, true);
-  window.addEventListener('dragend', () => {
-    clearDragState();
-  }, true);
-  window.addEventListener('drop', () => {
-    clearDragState();
-  }, true);
-}
-
-export default function EditorArea() {
-  const layout = useEditorStore((s) => s.layout);
-
-  return (
-    <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minWidth: 0, minHeight: 0 }}>
-      <SplitNodeRenderer node={layout} path={[]} />
-    </div>
-  );
-}
-
-// ======================== RESIZABLE SPLIT RENDERER ========================
-function SplitNodeRenderer({ node, path }: { node: SplitNode; path: number[] }) {
-  const updateSplitSizes = useEditorStore((s) => s.updateSplitSizes);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [localSizes, setLocalSizes] = useState<number[]>(node.type === 'split' ? node.sizes : []);
-  const sizesRef = useRef(localSizes);
-  sizesRef.current = localSizes;
-
-  // Sync sizes from store
-  useEffect(() => {
-    if (node.type === 'split') {
-      setLocalSizes(node.sizes);
+    .ai-ghost-text-multiline {
+      color: #6b7280 !important;
+      opacity: 0.7 !important;
+      font-style: italic !important;
+      pointer-events: none !important;
+      user-select: none !important;
+      white-space: pre !important;
     }
-  }, [node]);
+  `;
+  document.head.appendChild(style);
+}
 
-  if (node.type === 'leaf') {
-    return <EditorGroup groupId={node.id} tabs={node.tabs} activeTabId={node.activeTabId} />;
+function isAcceptShortcutPressed(
+  event: monaco.IKeyboardEvent,
+  acceptKey: 'tab' | 'enter' | 'ctrl+enter'
+): boolean {
+  if (acceptKey === 'tab') {
+    return (
+      event.keyCode === monaco.KeyCode.Tab &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      !event.shiftKey
+    );
   }
 
-  const isHorizontal = node.direction === 'horizontal';
+  if (acceptKey === 'enter') {
+    return (
+      event.keyCode === monaco.KeyCode.Enter &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      !event.shiftKey
+    );
+  }
 
-  const handleMouseDown = (e: React.MouseEvent, idx: number) => {
-    e.preventDefault();
-    const startPos = isHorizontal ? e.clientX : e.clientY;
-    const container = containerRef.current;
-    if (!container) return;
-    const totalSize = isHorizontal ? container.offsetWidth : container.offsetHeight;
-    const startSizes = [...sizesRef.current];
-
-    const handleMouseMove = (ev: MouseEvent) => {
-      const currentPos = isHorizontal ? ev.clientX : ev.clientY;
-      const deltaPx = currentPos - startPos;
-      const deltaPct = (deltaPx / totalSize) * 100;
-
-      const newSizes = [...startSizes];
-      const minSize = 10;
-      let s1 = startSizes[idx] + deltaPct;
-      let s2 = startSizes[idx + 1] - deltaPct;
-
-      if (s1 < minSize) { s2 -= (minSize - s1); s1 = minSize; }
-      if (s2 < minSize) { s1 -= (minSize - s2); s2 = minSize; }
-
-      newSizes[idx] = s1;
-      newSizes[idx + 1] = s2;
-      setLocalSizes(newSizes);
-      sizesRef.current = newSizes;
-    };
-
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      // Persist to store
-      updateSplitSizes(path, sizesRef.current);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = isHorizontal ? 'col-resize' : 'row-resize';
-    document.body.style.userSelect = 'none';
-  };
-
+  // ctrl+enter
   return (
-    <div
-      ref={containerRef}
-      className={`split-pane ${node.direction}`}
-      style={{ flex: 1, overflow: 'hidden' }}
-    >
-      {node.children.map((child, idx) => {
-        const sizeVal = localSizes[idx] ?? (100 / node.children.length);
-        const sizeStyle = isHorizontal
-          ? { width: `calc(${sizeVal}% - ${idx > 0 ? 1.5 : 0}px)`, height: '100%' }
-          : { height: `calc(${sizeVal}% - ${idx > 0 ? 1.5 : 0}px)`, width: '100%' };
-        return (
-          <div key={child.type === 'leaf' ? child.id : `split-${idx}`} style={{ display: 'contents' }}>
-            {idx > 0 && (
-              <div
-                className={`split-handle ${isHorizontal ? 'horizontal' : 'vertical'}`}
-                onMouseDown={(e) => handleMouseDown(e, idx - 1)}
-              />
-            )}
-            <div style={{ ...sizeStyle, overflow: 'hidden', display: 'flex', flexShrink: 0 }}>
-              <SplitNodeRenderer node={child} path={[...path, idx]} />
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    event.keyCode === monaco.KeyCode.Enter &&
+    (event.ctrlKey || event.metaKey) &&
+    !event.altKey
   );
 }
 
-interface EditorGroupProps {
-  groupId: string;
-  tabs: FileTab[];
-  activeTabId: string | null;
-}
+export function useInlineCompletion({
+  editor,
+  enabled = true,
+  activeTab,
+}: UseInlineCompletionOptions) {
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const decorationsCollectionRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+  const lastTriggerPositionRef = useRef<{ lineNumber: number; column: number } | null>(null);
+  const requestIdRef = useRef(0);
+  const widgetRef = useRef<monaco.editor.IOverlayWidget | null>(null);
+  const currentGhostTextRef = useRef<string | null>(null);
 
-function EditorGroup({ groupId, tabs, activeTabId }: EditorGroupProps) {
-  const activeGroupId = useEditorStore((s) => s.activeGroupId);
-  const setActiveGroup = useEditorStore((s) => s.setActiveGroup);
-  const updateTabContent = useEditorStore((s) => s.updateTabContent);
-  const markSaved = useEditorStore((s) => s.markSaved);
-  const splitGroup = useEditorStore((s) => s.splitGroup);
-  const moveTab = useEditorStore((s) => s.moveTab);
-  const removeGroup = useEditorStore((s) => s.removeGroup);
-  const updateCursorPosition = useEditorStore((s) => s.updateCursorPosition);
-  const updateScrollPosition = useEditorStore((s) => s.updateScrollPosition);
-  const getTabViewState = useEditorStore((s) => s.getTabViewState);
-  const totalGroups = useEditorStore((s) => s.getAllGroups().length);
-  const setInsertSnippetFn = useEditorStore((s) => s.setInsertSnippetFn);
-  const setCursorPosition = useEditorStore((s) => s.setCursorPosition);
-  const getAllSnippets = useSnippetStore((s) => s.getAllSnippets);
-  const currentTheme = useThemeStore((s) => s.currentTheme);
-  const currentScheme = useEditorSchemeStore((s) => s.currentScheme);
-  const settings = useSettingsStore((s) => s.settings);
-  const focusedPanel = useUIStore((s) => s.focusedPanel);
-  const setFocusedPanel = useUIStore((s) => s.setFocusedPanel);
-  const success = useNotificationStore((s) => s.success);
-  const error = useNotificationStore((s) => s.error);
-  const { triggerAutoSave } = useAutoSave();
-  const [isDragOver, setIsDragOver] = useState(false);
-  const isTabDragActive = useGlobalDragActive();
-  const [editorSwitching, setEditorSwitching] = useState(false);
-  const [typingStreak, setTypingStreak] = useState(0);
-  const [typingStreakVisible, setTypingStreakVisible] = useState(false);
-  const [inlineEditor, setInlineEditor] = useState<{
-    editor: editor.IStandaloneCodeEditor;
-    monaco: typeof import('monaco-editor');
-  } | null>(null);
+  const aiConfig = useAIStore((state) => state.config);
+  const pendingSuggestion = useAIStore((state) => state.pendingSuggestion);
+  const status = useAIStore((state) => state.status);
 
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const monacoRef = useRef<typeof import('monaco-editor') | null>(null);
-  const lastLocalContentRef = useRef<string | null>(null);
-  const previousActiveTabRef = useRef<string | null>(activeTabId);
-  const isRestoringViewStateRef = useRef(false);
-  const restoreGuardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const streakRef = useRef(0);
-  const streakPauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const streakCooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
-  const inlineCompletion = useInlineCompletion({
-    editor: inlineEditor?.editor ?? null,
-    monaco: inlineEditor?.monaco ?? null,
-    activeTab,
-  });
-
-  const restoreEditorViewState = useCallback(
-    (tab: FileTab | null, revealInCenter = false) => {
-      const ed = editorRef.current;
-      if (!ed || !tab) return;
-
-      const viewState = getTabViewState(tab) ?? {
-        line: tab.cursorLine,
-        column: tab.cursorColumn,
-        scrollTop: tab.scrollTop,
-      };
-
-      setTimeout(() => {
-        const model = ed.getModel();
-        const lineCount = model?.getLineCount() ?? viewState.line;
-        const safeLine = Math.max(1, Math.min(viewState.line, lineCount));
-        const maxColumn = model?.getLineMaxColumn(safeLine) ?? viewState.column;
-        const safeColumn = Math.max(1, Math.min(viewState.column, maxColumn));
-        isRestoringViewStateRef.current = true;
-        if (restoreGuardTimerRef.current) {
-          clearTimeout(restoreGuardTimerRef.current);
-        }
-
-        ed.setPosition({ lineNumber: safeLine, column: safeColumn });
-
-        if (viewState.scrollTop > 0) {
-          ed.setScrollTop(viewState.scrollTop);
-        } else if (revealInCenter) {
-          ed.revealLineInCenter(safeLine);
-        } else {
-          ed.revealLine(safeLine);
-        }
-
-        setCursorPosition(safeLine, safeColumn);
-        restoreGuardTimerRef.current = setTimeout(() => {
-          isRestoringViewStateRef.current = false;
-          restoreGuardTimerRef.current = null;
-        }, 0);
-      }, 0);
-    },
-    [getTabViewState, setCursorPosition]
-  );
-
-  const persistEditorViewState = useCallback(
-    (tab: FileTab | null) => {
-      const ed = editorRef.current;
-      if (!ed || !tab) return;
-
-      const pos = ed.getPosition();
-      if (pos) {
-        updateCursorPosition(groupId, tab.id, pos.lineNumber, pos.column);
-      }
-      updateScrollPosition(groupId, tab.id, ed.getScrollTop());
-    },
-    [groupId, updateCursorPosition, updateScrollPosition]
-  );
-
-  const stopStreakCooldown = useCallback(() => {
-    if (streakCooldownRef.current) {
-      clearInterval(streakCooldownRef.current);
-      streakCooldownRef.current = null;
-    }
+  // Inject CSS on first render
+  useEffect(() => {
+    injectGhostTextStyles();
   }, []);
 
-  const scheduleStreakDecay = useCallback(() => {
-    if (streakPauseTimerRef.current) {
-      clearTimeout(streakPauseTimerRef.current);
+  // Initialize completion engine with editor context
+  useEffect(() => {
+    if (!editor) return;
+    
+    // If completionEngine has a setEditor method, call it
+    if (typeof (completionEngine as any).setEditor === 'function') {
+      (completionEngine as any).setEditor(editor);
     }
-    streakPauseTimerRef.current = setTimeout(() => {
-      stopStreakCooldown();
-      const steps = 12;
-      const start = streakRef.current;
-      if (start <= 0) {
-        setTypingStreakVisible(false);
-        return;
+    
+    return () => {
+      if (typeof (completionEngine as any).setEditor === 'function') {
+        (completionEngine as any).setEditor(null);
       }
-      let step = 0;
-      streakCooldownRef.current = setInterval(() => {
-        step += 1;
-        const next = Math.max(0, Math.round(start * (1 - step / steps)));
-        streakRef.current = next;
-        setTypingStreak(next);
-        if (step >= steps || next <= 0) {
-          stopStreakCooldown();
-          setTypingStreakVisible(false);
-        }
-      }, 42);
-    }, 2000);
-  }, [stopStreakCooldown]);
+    };
+  }, [editor]);
 
-  const insertSnippetIntoEditor = useCallback((text: string) => {
-    const ed = editorRef.current;
-    if (!ed) return;
-    ed.focus();
-    const selection = ed.getSelection();
-    if (!selection) return;
-
-    const processedText = text.replace(/\$\{1:TIMESTAMP\}/g, formatTimestamp());
-    const contribution = ed.getContribution('snippetController2') as any;
-    if (contribution) {
-      contribution.insert(processedText);
+  // Create decorations collection per editor instance
+  useEffect(() => {
+    if (!editor) {
+      decorationsCollectionRef.current = null;
       return;
     }
-
-    ed.executeEdits('snippet', [{
-      range: selection,
-      text: processedText.replace(/\$\{\d+(?::([^}]*))?\}/g, '$1').replace(/\$\d+/g, ''),
-      forceMoveMarkers: true,
-    }]);
-  }, []);
-
-  const handleFocus = useCallback(() => {
-    setFocusedPanel('editor');
-    if (groupId !== activeGroupId) {
-      setActiveGroup(groupId);
+    
+    // Use the newer API if available, fallback to old one
+    if (typeof editor.createDecorationsCollection === 'function') {
+      decorationsCollectionRef.current = editor.createDecorationsCollection([]);
     }
-    if (editorRef.current && monacoRef.current) {
-      setActiveEditor(editorRef.current, monacoRef.current);
-      setInsertSnippetFn(insertSnippetIntoEditor);
-    }
-  }, [activeGroupId, groupId, insertSnippetIntoEditor, setActiveGroup, setFocusedPanel, setInsertSnippetFn]);
+    
+    return () => {
+      if (decorationsCollectionRef.current) {
+        decorationsCollectionRef.current.clear();
+        decorationsCollectionRef.current = null;
+      }
+    };
+  }, [editor]);
 
-  // Drop zone on the entire editor group
-  const handleGroupDragOver = useCallback((e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes(TAB_DRAG_TYPE)) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      setIsDragOver(true);
-    }
-  }, []);
-
-  const handleGroupDragLeave = useCallback((e: React.DragEvent) => {
-    // Only clear if leaving the container itself
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = e.clientX;
-    const y = e.clientY;
-    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
-      setIsDragOver(false);
-    }
-  }, []);
-
-  const handleGroupDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const raw = e.dataTransfer.getData(TAB_DRAG_TYPE);
-    if (!raw) return;
+  /**
+   * Remove the multi-line overlay widget
+   */
+  const removeOverlayWidget = useCallback(() => {
+    if (!editor || !widgetRef.current) return;
     try {
-      const { sourceGroupId, tabId } = JSON.parse(raw);
-      if (sourceGroupId !== groupId) {
-        moveTab(sourceGroupId, tabId, groupId);
+      editor.removeOverlayWidget(widgetRef.current);
+    } catch {
+      // widget may already be removed
+    }
+    widgetRef.current = null;
+  }, [editor]);
+
+  /**
+   * Clear all ghost text (decorations + widget)
+   */
+  const clearGhostText = useCallback(() => {
+    removeOverlayWidget();
+    currentGhostTextRef.current = null;
+    
+    if (decorationsCollectionRef.current) {
+      decorationsCollectionRef.current.clear();
+    } else if (editor) {
+      // Fallback for older Monaco versions
+      (editor as any)._ghostDecorations = editor.deltaDecorations(
+        (editor as any)._ghostDecorations || [],
+        []
+      );
+    }
+  }, [editor, removeOverlayWidget]);
+
+  /**
+   * Render ghost text decorations in the editor.
+   */
+  const updateGhostText = useCallback(
+    (text: string | null, position: monaco.Position) => {
+      if (!editor) return;
+
+      // Clear existing first
+      clearGhostText();
+
+      if (!text || !text.trim()) {
+        return;
       }
-    } catch {}
-  }, [groupId, moveTab]);
 
-  const handleEditorMount: OnMount = useCallback(
-    (editor, monaco) => {
-      editorRef.current = editor;
-      monacoRef.current = monaco;
-      setInlineEditor({ editor, monaco });
+      currentGhostTextRef.current = text;
+      const lines = text.split('\n');
+      const firstLine = lines[0] || '';
+      const restLines = lines.slice(1);
+      const decorations: monaco.editor.IModelDeltaDecoration[] = [];
 
-      // Register editor color scheme
-      try {
-        monaco.editor.defineTheme(currentScheme.id, currentScheme.monacoTheme as editor.IStandaloneThemeData);
-        monaco.editor.setTheme(currentScheme.id);
-      } catch {
-        // theme already registered
-      }
-
-      // Register snippet completion provider for C++ ONCE globally
-      if (!snippetsRegistered) {
-        snippetsRegistered = true;
-        monaco.languages.registerCompletionItemProvider('cpp', {
-          provideCompletionItems: (model, position) => {
-            const word = model.getWordUntilPosition(position);
-            const range = {
-              startLineNumber: position.lineNumber,
-              endLineNumber: position.lineNumber,
-              startColumn: word.startColumn,
-              endColumn: word.endColumn,
-            };
-            const allSnippets = getAllSnippets();
-            const suggestions = allSnippets.map((s) => ({
-              label: s.prefix,
-              kind: monaco.languages.CompletionItemKind.Snippet,
-              documentation: s.description,
-              insertText: s.body.replace(/\$\{1:TIMESTAMP\}/g, formatTimestamp()),
-              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              range,
-            }));
-            return { suggestions };
+      // ── First line: inject after cursor ──
+      if (firstLine) {
+        decorations.push({
+          range: new monaco.Range(
+            position.lineNumber,
+            position.column,
+            position.lineNumber,
+            position.column
+          ),
+          options: {
+            after: {
+              content: firstLine,
+              inlineClassName: 'ai-ghost-text',
+              cursorStops: monaco.editor.InjectedTextCursorStops.None,
+            },
           },
         });
       }
 
-      if (groupId === activeGroupId) {
-        setActiveEditor(editor, monaco);
-        setInsertSnippetFn(insertSnippetIntoEditor);
+      // Apply decorations
+      if (decorationsCollectionRef.current) {
+        decorationsCollectionRef.current.set(decorations);
+      } else {
+        // Fallback for older Monaco
+        (editor as any)._ghostDecorations = editor.deltaDecorations(
+          (editor as any)._ghostDecorations || [],
+          decorations
+        );
       }
 
-      // Ctrl+S save
-      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
-        if (activeTab?.path) {
-          try {
-            useUIStore.getState().startSavingIndicator();
-            const content = editor.getValue();
-            await writeFileContent(activeTab.path, content);
-            markSaved(activeTab.path);
-            useUIStore.getState().finishSavingIndicator();
-            success('File saved');
-          } catch (err) {
-            useUIStore.getState().resetSavingIndicator();
-            error('Failed to save file');
+      // ── Multi-line: overlay widget ──
+      if (restLines.length > 0 && aiConfig.completion.multiLineEnabled) {
+        const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
+        const fontInfo = editor.getOption(monaco.editor.EditorOption.fontInfo);
+        const topForPosition = editor.getTopForLineNumber(position.lineNumber);
+        const scrollTop = editor.getScrollTop();
+        const editorLayout = editor.getLayoutInfo();
+
+        // Calculate left offset based on cursor column
+        const model = editor.getModel();
+        const lineContent = model?.getLineContent(position.lineNumber) || '';
+        const textBeforeCursor = lineContent.substring(0, position.column - 1);
+        
+        const widgetId = 'ai-ghost-multiline-' + Date.now();
+
+        const domNode = document.createElement('div');
+        domNode.className = 'ai-ghost-multiline-widget';
+        domNode.style.cssText = `
+          pointer-events: none;
+          z-index: 100;
+          position: absolute;
+          font-family: ${fontInfo.fontFamily};
+          font-size: ${fontInfo.fontSize}px;
+          line-height: ${lineHeight}px;
+          font-weight: ${fontInfo.fontWeight};
+          color: #6b7280;
+          opacity: 0.7;
+          font-style: italic;
+          white-space: pre;
+          padding-left: ${editorLayout.contentLeft}px;
+        `;
+
+        domNode.textContent = restLines.join('\n');
+
+        const widget: monaco.editor.IOverlayWidget = {
+          getId: () => widgetId,
+          getDomNode: () => domNode,
+          getPosition: () => null,
+        };
+
+        editor.addOverlayWidget(widget);
+        widgetRef.current = widget;
+
+        // Position below the current line
+        const top = topForPosition - scrollTop + lineHeight;
+        domNode.style.top = `${top}px`;
+        domNode.style.left = '0px';
+      }
+    },
+    [editor, aiConfig.completion.multiLineEnabled, clearGhostText]
+  );
+
+  /**
+   * Trigger a completion request
+   */
+  const triggerCompletion = useCallback(
+    async (
+      position: { lineNumber: number; column: number },
+      triggerKind: 'auto' | 'manual'
+    ) => {
+      if (!editor || !aiConfig.enabled || !enabled) {
+        return;
+      }
+
+      const model = editor.getModel();
+      if (!model) return;
+
+      const languageId = model.getLanguageId?.();
+      if (languageId === 'plaintext' || languageId === 'text') {
+        return;
+      }
+
+      // For auto-trigger, require some context
+      if (triggerKind === 'auto') {
+        const lineContent = model.getLineContent(position.lineNumber) || '';
+        const textBeforeCursor = lineContent.substring(0, position.column - 1);
+        
+        // Skip if line is empty and we're at the beginning
+        if (textBeforeCursor.trim().length === 0 && position.lineNumber <= 1) {
+          return;
+        }
+        
+        // Skip if the line only has whitespace and no previous content
+        const fullContent = model.getValue();
+        if (fullContent.trim().length < 5) {
+          return; // Need at least some context
+        }
+      }
+
+      lastTriggerPositionRef.current = position;
+      const thisRequestId = ++requestIdRef.current;
+
+      try {
+        // Get the full content to pass to completion engine
+        const fullContent = model.getValue();
+        const language = model.getLanguageId();
+        
+        // Try to pass context if the completion engine supports it
+        let completion;
+        if (typeof (completionEngine as any).requestCompletionWithContext === 'function') {
+          completion = await (completionEngine as any).requestCompletionWithContext({
+            position,
+            triggerKind,
+            content: fullContent,
+            language,
+            filePath: activeTab?.path,
+          });
+        } else {
+          completion = await completionEngine.requestCompletion(position, triggerKind);
+        }
+
+        // Check if this request is still the latest
+        if (requestIdRef.current !== thisRequestId) {
+          return;
+        }
+
+        const currentPosition = editor.getPosition();
+
+        if (
+          currentPosition &&
+          currentPosition.lineNumber === position.lineNumber &&
+          Math.abs(currentPosition.column - position.column) <= 2 &&
+          completion
+        ) {
+          const displayText = completion.displayText || completion.text;
+          if (displayText && displayText.trim()) {
+            updateGhostText(displayText, currentPosition);
           }
         }
-      });
-
-      editor.onDidFocusEditorText(() => {
-        handleFocus();
-      });
-
-      // Track cursor position for status bar and store
-      editor.onDidChangeCursorPosition((e) => {
-        setCursorPosition(e.position.lineNumber, e.position.column);
-        if (isRestoringViewStateRef.current) return;
-        if (activeTab) {
-          updateCursorPosition(groupId, activeTab.id, e.position.lineNumber, e.position.column);
-        }
-      });
-
-      editor.onDidScrollChange((e) => {
-        if (isRestoringViewStateRef.current) return;
-        if (activeTab) {
-          updateScrollPosition(groupId, activeTab.id, e.scrollTop);
-        }
-      });
-
-      editor.onDidChangeModelContent((e) => {
-        if (!e.changes || e.changes.length === 0) return;
-        if (streakCooldownRef.current) {
-          clearInterval(streakCooldownRef.current);
-          streakCooldownRef.current = null;
-        }
-        streakRef.current += 1;
-        setTypingStreak(streakRef.current);
-        setTypingStreakVisible(true);
-        scheduleStreakDecay();
-      });
-
-      restoreEditorViewState(activeTab);
-      lastLocalContentRef.current = activeTab?.content ?? editor.getValue();
-
-      // Set initial cursor position for status bar
-      const pos = editor.getPosition();
-      if (pos) {
-        setCursorPosition(pos.lineNumber, pos.column);
+      } catch (error) {
+        if (requestIdRef.current !== thisRequestId) return;
+        console.error('[AI Inline] Completion error:', error);
       }
     },
-    [
-      activeGroupId,
-      activeTab,
-      currentScheme,
-      error,
-      groupId,
-      handleFocus,
-      insertSnippetIntoEditor,
-      markSaved,
-      restoreEditorViewState,
-      scheduleStreakDecay,
-      setCursorPosition,
-      setInsertSnippetFn,
-      success,
-      updateCursorPosition,
-      updateScrollPosition,
-    ]
+    [editor, aiConfig.enabled, enabled, activeTab?.path, updateGhostText]
   );
 
-  const handleEditorChange = useCallback(
-    (value: string | undefined) => {
-      if (activeTab && value !== undefined) {
-        lastLocalContentRef.current = value;
-        updateTabContent(activeTab.id, value);
-        if (activeTab.path) {
-          triggerAutoSave(activeTab.path, value);
-        }
-      }
-    },
-    [activeTab, updateTabContent, triggerAutoSave]
-  );
-
-  // Apply editor color scheme changes
-  const handleEditorBeforeMount = useCallback(
-    (monaco: typeof import('monaco-editor')) => {
-      monacoRef.current = monaco;
-      try {
-        monaco.editor.defineTheme(currentScheme.id, currentScheme.monacoTheme as editor.IStandaloneThemeData);
-      } catch {}
-    },
-    [currentScheme]
-  );
-
-  // Restore cursor and scroll state when switching tabs.
-  useEffect(() => {
-    if (activeTab) {
-      const viewState = getTabViewState(activeTab) ?? {
-        line: activeTab.cursorLine,
-        column: activeTab.cursorColumn,
-        scrollTop: activeTab.scrollTop,
-      };
-      lastLocalContentRef.current = activeTab.content;
-      restoreEditorViewState(activeTab, true);
-      setCursorPosition(viewState.line, viewState.column);
+  /**
+   * Accept the current pending suggestion
+   */
+  const acceptSuggestion = useCallback((): boolean => {
+    if (!editor || !pendingSuggestion) {
+      return false;
     }
-    
-    // Cleanup: persist view state when switching away from this tab
-    return () => {
-      if (activeTab && editorRef.current) {
-        const pos = editorRef.current.getPosition();
-        if (pos) {
-          updateCursorPosition(groupId, activeTab.id, pos.lineNumber, pos.column);
-        }
-        updateScrollPosition(groupId, activeTab.id, editorRef.current.getScrollTop());
-      }
-    };
-  }, [activeTab?.id, activeTab?.path, getTabViewState, restoreEditorViewState, setCursorPosition, groupId, updateCursorPosition, updateScrollPosition]);
 
-  // If the file content is refreshed from disk, restore the previous view state.
-  useEffect(() => {
-    if (!activeTab) return;
-    if (lastLocalContentRef.current === activeTab.content) return;
-
-    restoreEditorViewState(activeTab);
-    lastLocalContentRef.current = activeTab.content;
-  }, [activeTab?.content, activeTab?.id, activeTab?.path, restoreEditorViewState]);
-
-  useEffect(() => {
-    if (groupId !== activeGroupId) return;
-    if (!editorRef.current || !monacoRef.current) return;
-    setActiveEditor(editorRef.current, monacoRef.current);
-    setInsertSnippetFn(insertSnippetIntoEditor);
-  }, [activeGroupId, groupId, insertSnippetIntoEditor, setInsertSnippetFn]);
-
-  useEffect(() => {
-    return () => {
-      persistEditorViewState(activeTab);
-    };
-  }, [activeTab?.id, activeTab?.path, persistEditorViewState]);
-
-  useEffect(() => {
-    if (!activeTabId) return;
-    if (previousActiveTabRef.current && previousActiveTabRef.current !== activeTabId) {
-      setEditorSwitching(true);
-      const timer = setTimeout(() => setEditorSwitching(false), 150);
-      previousActiveTabRef.current = activeTabId;
-      return () => clearTimeout(timer);
+    const position = editor.getPosition();
+    if (!position) {
+      return false;
     }
-    previousActiveTabRef.current = activeTabId;
-  }, [activeTabId]);
 
+    const insertText = completionEngine.acceptSuggestion();
+    if (!insertText) {
+      return false;
+    }
+
+    // Clear ghost text first
+    clearGhostText();
+
+    const lines = insertText.split('\n');
+    editor.executeEdits('ai-completion', [
+      {
+        range: new monaco.Range(
+          position.lineNumber,
+          position.column,
+          position.lineNumber,
+          position.column
+        ),
+        text: insertText,
+      },
+    ]);
+
+    const newLine = position.lineNumber + lines.length - 1;
+    const newColumn =
+      lines.length === 1
+        ? position.column + insertText.length
+        : lines[lines.length - 1].length + 1;
+
+    editor.setPosition({ lineNumber: newLine, column: newColumn });
+    editor.focus();
+
+    return true;
+  }, [editor, pendingSuggestion, clearGhostText]);
+
+  /**
+   * Reject the current pending suggestion
+   */
+  const rejectSuggestion = useCallback(() => {
+    if (!pendingSuggestion) return;
+
+    completionEngine.rejectSuggestion();
+    clearGhostText();
+  }, [pendingSuggestion, clearGhostText]);
+
+  /**
+   * Accept partial suggestion (next N words)
+   */
+  const acceptPartialSuggestion = useCallback(
+    (wordCount: number = 1): boolean => {
+      if (!editor || !pendingSuggestion) {
+        return false;
+      }
+
+      const position = editor.getPosition();
+      if (!position) {
+        return false;
+      }
+
+      const insertText = completionEngine.acceptPartialSuggestion(wordCount);
+      if (!insertText) {
+        return false;
+      }
+
+      editor.executeEdits('ai-completion-partial', [
+        {
+          range: new monaco.Range(
+            position.lineNumber,
+            position.column,
+            position.lineNumber,
+            position.column
+          ),
+          text: insertText,
+        },
+      ]);
+
+      const newColumn = position.column + insertText.length;
+      editor.setPosition({ lineNumber: position.lineNumber, column: newColumn });
+      editor.focus();
+
+      const remaining = useAIStore.getState().pendingSuggestion;
+      if (remaining) {
+        updateGhostText(
+          remaining.displayText || remaining.text,
+          new monaco.Position(position.lineNumber, newColumn)
+        );
+      } else {
+        clearGhostText();
+      }
+
+      return true;
+    },
+    [editor, pendingSuggestion, updateGhostText, clearGhostText]
+  );
+
+  // ── Main effect: wire up editor events ──
   useEffect(() => {
-    return () => {
-      setInlineEditor(null);
-      if (streakPauseTimerRef.current) {
-        clearTimeout(streakPauseTimerRef.current);
-      }
-      if (streakCooldownRef.current) {
-        clearInterval(streakCooldownRef.current);
-      }
-      if (restoreGuardTimerRef.current) {
-        clearTimeout(restoreGuardTimerRef.current);
-      }
-    };
-  }, []);
+    if (!editor || !aiConfig.enabled || !enabled) {
+      return;
+    }
 
-  const handleSplitH = useCallback(() => {
-    splitGroup(groupId, 'horizontal');
-  }, [groupId, splitGroup]);
+    const disposables: monaco.IDisposable[] = [];
 
-  const handleSplitV = useCallback(() => {
-    splitGroup(groupId, 'vertical');
-  }, [groupId, splitGroup]);
+    // On content change
+    disposables.push(
+      editor.onDidChangeModelContent(() => {
+        if (debounceTimerRef.current) {
+          clearTimeout(debounceTimerRef.current);
+        }
 
-  const handleCloseGroup = useCallback(() => {
-    removeGroup(groupId);
-  }, [groupId, removeGroup]);
+        // Cancel in-flight request
+        requestIdRef.current++;
+        completionEngine.cancelCurrentRequest();
+        clearGhostText();
 
-  if (tabs.length === 0) {
-    return (
-      <div
-        className={`editor-container ${isDragOver ? 'drag-over' : ''} ${focusedPanel === 'editor' ? 'focused' : ''}`}
-        onClick={handleFocus}
-        onMouseDown={handleFocus}
-        onDragOver={handleGroupDragOver}
-        onDragLeave={handleGroupDragLeave}
-        onDrop={handleGroupDrop}
-      >
-        <WelcomeScreen />
-      </div>
+        // Dismiss pending suggestion
+        const currentSuggestion = useAIStore.getState().pendingSuggestion;
+        if (currentSuggestion) {
+          completionEngine.rejectSuggestion();
+        }
+
+        if (!aiConfig.completion.autoTrigger) {
+          return;
+        }
+
+        debounceTimerRef.current = setTimeout(() => {
+          const currentPosition = editor.getPosition();
+          if (currentPosition) {
+            void triggerCompletion(currentPosition, 'auto');
+          }
+        }, aiConfig.completion.triggerDelay);
+      })
     );
-  }
 
-  return (
-    <div
-      className={`editor-container ${isDragOver ? 'drag-over' : ''} ${focusedPanel === 'editor' ? 'focused' : ''}`}
-      onClick={handleFocus}
-      onMouseDown={handleFocus}
-      onDragOver={handleGroupDragOver}
-      onDragLeave={handleGroupDragLeave}
-      onDrop={handleGroupDrop}
-    >
-      <div className="tab-bar-wrapper">
-        <TabBar groupId={groupId} tabs={tabs} activeTabId={activeTabId} />
-        <div className="tab-bar-actions">
-          <button className="icon-btn" onClick={handleSplitH} title="Split Right">
-            <VscSplitHorizontal />
-          </button>
-          <button className="icon-btn" onClick={handleSplitV} title="Split Down">
-            <VscSplitVertical />
-          </button>
-          {totalGroups > 1 && (
-            <button className="icon-btn" onClick={handleCloseGroup} title="Close Group">
-              <VscClose />
-            </button>
-          )}
-        </div>
-      </div>
-      {activeTab ? (
-        <div className={`editor-pane ${editorSwitching ? 'switching' : ''}`} style={{ position: 'relative' }}>
-          <div
-            className="editor-drag-overlay"
-            style={{ pointerEvents: isTabDragActive ? 'all' : 'none', opacity: (isDragOver || isTabDragActive) ? 1 : 0 }}
-            onDragOver={handleGroupDragOver}
-            onDragLeave={handleGroupDragLeave}
-            onDrop={handleGroupDrop}
-          />
-          <div
-            className={`typing-streak ${typingStreakVisible ? 'active' : ''} ${
-              typingStreak >= 200
-                ? 'tier-ultra'
-                : typingStreak >= 100
-                  ? 'tier-hot'
-                  : typingStreak >= 50
-                    ? 'tier-warm'
-                    : typingStreak >= 10
-                      ? 'tier-mild'
-                      : ''
-            }`}
-          >
-            {typingStreak}
-          </div>
-          <InlineHint />
-          <div className={`monaco-wrapper ${settings.editor.fontStyle === 'italic' ? 'font-italic' : ''}`}>
-            <Editor
-              key={activeTab.id}
-              height="100%"
-              path={activeTab.path || `untitled://${activeTab.id}/${activeTab.name || 'untitled'}`}
-              language={activeTab.language}
-              value={activeTab.content}
-              theme={currentScheme.id}
-              onChange={handleEditorChange}
-              onMount={handleEditorMount}
-              beforeMount={handleEditorBeforeMount}
-              options={{
-                fontSize: settings.editor.fontSize,
-                fontFamily: settings.editor.fontFamily,
-                fontLigatures: settings.editor.fontLigatures,
-                fontWeight: settings.editor.fontWeight as any,
-                lineHeight: Math.round(settings.editor.fontSize * settings.editor.lineHeight),
-                tabSize: settings.editor.tabSize,
-                insertSpaces: settings.editor.insertSpaces,
-                wordWrap: settings.editor.wordWrap as 'on' | 'off' | 'wordWrapColumn' | 'bounded',
-                wordWrapColumn: settings.editor.wordWrapColumn,
-                minimap: { enabled: settings.editor.minimap },
-                lineNumbers: settings.editor.lineNumbers as editor.IEditorOptions['lineNumbers'],
-                renderWhitespace: settings.editor.renderWhitespace as 'all' | 'none' | 'boundary' | 'selection' | 'trailing',
-                bracketPairColorization: { enabled: settings.editor.bracketPairColorization },
-                autoClosingBrackets: settings.editor.autoClosingBrackets,
-                autoClosingQuotes: settings.editor.autoClosingQuotes,
-                formatOnPaste: settings.editor.formatOnPaste,
-                formatOnType: settings.editor.formatOnType,
-                smoothScrolling: settings.editor.smoothScrolling,
-                cursorSmoothCaretAnimation: 'on' as any,
-                cursorWidth: settings.editor.cursorWidth,
-                cursorBlinking: settings.editor.cursorBlinking as editor.IEditorOptions['cursorBlinking'],
-                cursorStyle: settings.editor.cursorStyle as editor.IEditorOptions['cursorStyle'],
-                renderLineHighlight: 'all',
-                mouseWheelZoom: false,
-                stickyScroll: { enabled: settings.editor.stickyScroll },
-                linkedEditing: settings.editor.linkedEditing,
-                guides: {
-                  indentation: settings.editor.guides.indentation,
-                  bracketPairs: settings.editor.guides.bracketPairs,
-                },
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                padding: { top: 8 },
-                inlineSuggest: {
-                  enabled: true,
-                  mode: 'prefix',
-                  suppressSuggestions: false,
-                  showToolbar: 'onHover',
-                } as any,
-                suggest: {
-                  showSnippets: settings.editor.snippetSuggestions !== 'none',
-                  snippetsPreventQuickSuggestions: false,
-                  preview: true,
-                  previewMode: 'prefix' as any,
-                },
-                snippetSuggestions: settings.editor.snippetSuggestions,
-                suggestOnTriggerCharacters: settings.editor.suggestOnTriggerCharacters,
-                acceptSuggestionOnEnter: settings.editor.acceptSuggestionOnEnter,
-                quickSuggestions: true,
-              }}
-            />
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
+    // On cursor position change
+    disposables.push(
+      editor.onDidChangeCursorPosition((event) => {
+        if (
+          lastTriggerPositionRef.current &&
+          event.position.lineNumber !== lastTriggerPositionRef.current.lineNumber
+        ) {
+          const currentSuggestion = useAIStore.getState().pendingSuggestion;
+          if (currentSuggestion) {
+            completionEngine.rejectSuggestion();
+            clearGhostText();
+          }
+        }
+      })
+    );
+
+    // On scroll: reposition overlay widget
+    disposables.push(
+      editor.onDidScrollChange(() => {
+        if (!widgetRef.current || !lastTriggerPositionRef.current) return;
+
+        const domNode = widgetRef.current.getDomNode();
+        if (!domNode) return;
+
+        const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
+        const topForPosition = editor.getTopForLineNumber(
+          lastTriggerPositionRef.current.lineNumber
+        );
+        const scrollTop = editor.getScrollTop();
+        const top = topForPosition - scrollTop + lineHeight;
+        domNode.style.top = `${top}px`;
+      })
+    );
+
+    // Priority shortcut handling
+    disposables.push(
+      editor.onKeyDown((event) => {
+        const hasSuggestion = !!useAIStore.getState().pendingSuggestion;
+        if (!hasSuggestion) return;
+
+        if (isAcceptShortcutPressed(event, aiConfig.completion.acceptKey)) {
+          event.preventDefault();
+          event.stopPropagation();
+          acceptSuggestion();
+          return;
+        }
+
+        if (event.keyCode === monaco.KeyCode.Escape) {
+          event.preventDefault();
+          event.stopPropagation();
+          rejectSuggestion();
+        }
+      })
+    );
+
+    // Editor actions
+    const acceptAction = editor.addAction({
+      id: 'ai.acceptSuggestion',
+      label: 'Accept AI Suggestion',
+      keybindings: [],
+      run: () => {
+        acceptSuggestion();
+      },
+    });
+
+    const rejectAction = editor.addAction({
+      id: 'ai.rejectSuggestion',
+      label: 'Reject AI Suggestion',
+      keybindings: [],
+      run: () => rejectSuggestion(),
+    });
+
+    const partialAcceptAction = editor.addAction({
+      id: 'ai.acceptPartialSuggestion',
+      label: 'Accept Next Word',
+      keybindings: [
+        aiConfig.completion.partialAcceptKey === 'ctrl+right'
+          ? monaco.KeyMod.CtrlCmd | monaco.KeyCode.RightArrow
+          : monaco.KeyMod.Alt | monaco.KeyCode.RightArrow,
+      ],
+      run: () => {
+        if (!acceptPartialSuggestion(1)) {
+          editor.trigger('keyboard', 'cursorWordEndRight', {});
+        }
+      },
+    });
+
+    const manualTriggerAction = editor.addAction({
+      id: 'ai.triggerSuggestion',
+      label: 'Trigger AI Suggestion',
+      keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.Backslash],
+      run: () => {
+        const currentPosition = editor.getPosition();
+        if (currentPosition) {
+          void triggerCompletion(currentPosition, 'manual');
+        }
+      },
+    });
+
+    return () => {
+      disposables.forEach((d) => d.dispose());
+      acceptAction.dispose();
+      rejectAction.dispose();
+      partialAcceptAction.dispose();
+      manualTriggerAction.dispose();
+
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+
+      clearGhostText();
+    };
+  }, [
+    editor,
+    aiConfig.enabled,
+    aiConfig.completion.autoTrigger,
+    aiConfig.completion.triggerDelay,
+    aiConfig.completion.acceptKey,
+    aiConfig.completion.partialAcceptKey,
+    enabled,
+    triggerCompletion,
+    acceptSuggestion,
+    rejectSuggestion,
+    acceptPartialSuggestion,
+    clearGhostText,
+  ]);
+
+  // ── Sync ghost text with pendingSuggestion store changes ──
+  useEffect(() => {
+    if (!editor) return;
+
+    const position = editor.getPosition();
+    if (!position) return;
+
+    if (pendingSuggestion) {
+      const displayText = pendingSuggestion.displayText || pendingSuggestion.text;
+      if (displayText && displayText.trim()) {
+        updateGhostText(displayText, position);
+      }
+    } else {
+      clearGhostText();
+    }
+  }, [editor, pendingSuggestion, updateGhostText, clearGhostText]);
+
+  return {
+    triggerCompletion,
+    acceptSuggestion,
+    rejectSuggestion,
+    acceptPartialSuggestion,
+    isLoading: status === 'loading' || status === 'streaming',
+    hasSuggestion: !!pendingSuggestion,
+    showInlineHint: aiConfig.ui.showInlineHints && !!pendingSuggestion,
+    hintText:
+      aiConfig.completion.acceptKey === 'enter'
+        ? 'Enter to accept'
+        : aiConfig.completion.acceptKey === 'ctrl+enter'
+          ? 'Ctrl+Enter to accept'
+          : 'Tab to accept',
+  };
 }
 
-function WelcomeScreen() {
-  const rows = [
-    ['Ctrl+O', 'Open File'],
-    ['Ctrl+Shift+P', 'Command Palette'],
-    ['Ctrl+P', 'Quick Open'],
-    ['Ctrl+B', 'Compile & Run'],
-    ['Ctrl+Shift+B', 'Compile'],
-    ['Ctrl+K', 'Kill Process'],
-  ] as const;
-
-  return (
-    <div className="editor-welcome">
-      <div className="editor-welcome-logo">Doom Code</div>
-      <div className="editor-welcome-subtitle">Competitive Programming IDE</div>
-      <div className="editor-welcome-shortcuts">
-        {rows.map(([key, label], idx) => (
-          <div key={key} className="editor-welcome-row" style={{ animationDelay: `${idx * 60}ms` }}>
-            <span className="editor-welcome-key">{key}</span>
-            <span className="editor-welcome-desc">{label}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+export default useInlineCompletion as any;

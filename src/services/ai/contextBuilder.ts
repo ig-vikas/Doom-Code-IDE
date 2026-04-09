@@ -2,14 +2,18 @@ import type { ContextSettings } from '../../types/ai';
 import { useEditorStore } from '../../stores/editorStore';
 import { getActiveEditor, getActiveMonaco } from '../commandService';
 
+// In contextBuilder.ts or types file
 export interface ContextResult {
   prefix: string;
-  suffix: string | undefined;
-  hasSuffix: boolean;
+  suffix: string;
   language: string;
   filePath: string;
+  hasSuffix: boolean;
   estimatedTokens: number;
+  linesBefore?: number;
+  linesAfter?: number;
 }
+
 
 const LANGUAGE_MAP: Record<string, string> = {
   ts: 'typescript',

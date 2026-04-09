@@ -124,6 +124,7 @@ export interface AIUISettings {
   showStatusInTopBar: boolean;
   showInlineHints: boolean;
   ghostTextOpacity: number;
+  ghostOpacity?: number;
   showTokenCount: boolean;
   showCostEstimate: boolean;
 }
@@ -182,6 +183,7 @@ export interface Completion {
   text: string;
   displayText?: string;
   insertText: string;
+  documentation?: string;
   range?: {
     startLine: number;
     startColumn: number;

@@ -11,7 +11,16 @@ import SettingsPanel from './components/SettingsPanel';
 import DocsPanel from './components/DocsPanel';
 import StartupOverlay from './components/StartupOverlay';
 import BuildProgressBar from './components/BuildProgressBar';
-import { useUIStore, useThemeStore, useSettingsStore, useEditorSchemeStore, useEditorStore, useBuildStore, useAIStore, useFileExplorerStore } from './stores';
+import {
+  useUIStore,
+  useThemeStore,
+  useSettingsStore,
+  useEditorSchemeStore,
+  useEditorStore,
+  useBuildStore,
+  useAIStore,
+  useFileExplorerStore,
+} from './stores';
 import { useGlobalKeybindings } from './hooks/useKeybindings';
 import { useResizable } from './hooks/useResizable';
 import { loadConfig } from './services/configService';
@@ -143,13 +152,17 @@ export default function App() {
   const uiFontFamily = useSettingsStore((s) => s.settings.ui.fontFamily);
   const statusBarVisible = useSettingsStore((s) => s.settings.ui.statusBarVisible);
   const activityBarVisible = useSettingsStore((s) => s.settings.ui.activityBarVisible);
-  const ghostOpacity = useAIStore((s) => s.config.ui.ghostTextOpacity);
   const workspaceRoot = useFileExplorerStore((s) => s.rootPath);
   const setTheme = useThemeStore((s) => s.setTheme);
   const currentTheme = useThemeStore((s) => s.currentTheme);
 
+  // AI-related state - handle both possible property names for compatibility
+  const aiConfig = useAIStore((s) => s.config);
+  const ghostOpacity = aiConfig.ui?.ghostTextOpacity ?? aiConfig.ui?.ghostOpacity ?? 0.6;
+
   const [startupReady, setStartupReady] = useState(false);
   const [startupVisible, setStartupVisible] = useState(true);
+  const [aiInitialized, setAiInitialized] = useState(false);
   const [paletteMounted, setPaletteMounted] = useState(commandPaletteOpen);
   const [paletteClosing, setPaletteClosing] = useState(false);
   const [warmFactor, setWarmFactor] = useState(() => getWarmFactorForTime(new Date()));
@@ -166,9 +179,11 @@ export default function App() {
     useUIStore.getState().setBottomPanelHeight(useUIStore.getState().bottomPanelHeight - delta);
   });
 
+  // Main startup initialization
   useEffect(() => {
     let cancelled = false;
     let finished = false;
+
     const markReady = () => {
       if (cancelled || finished) return;
       finished = true;
@@ -176,60 +191,73 @@ export default function App() {
     };
 
     const startupGuard = window.setTimeout(() => {
+      console.warn('[Startup] Guard timeout reached, forcing ready state');
       markReady();
     }, 10000);
 
     (async () => {
+      // Load custom themes
       try {
         await useThemeStore.getState().loadCustomThemesFromDisk();
       } catch (error) {
-        console.error('Failed to load custom themes during startup:', error);
+        console.error('[Startup] Failed to load custom themes:', error);
       }
 
+      // Load editor color schemes
       try {
         await useEditorSchemeStore.getState().loadCustomSchemesFromDisk();
       } catch (error) {
-        console.error('Failed to load editor schemes during startup:', error);
+        console.error('[Startup] Failed to load editor schemes:', error);
       }
 
+      // Initialize AI - critical for inline completion
       try {
+        console.debug('[Startup] Initializing AI...');
         await useAIStore.getState().loadConfig();
         await useAIStore.getState().hydrateSecureState();
         await aiService.initialize();
+        setAiInitialized(true);
+        console.debug('[Startup] AI initialized successfully', {
+          enabled: useAIStore.getState().config.enabled,
+          provider: useAIStore.getState().config.activeProvider,
+        });
       } catch (error) {
-        console.error('Failed to initialize AI settings during startup:', error);
+        console.error('[Startup] Failed to initialize AI:', error);
+        // Don't block startup, but log for debugging
       }
 
+      // Load app settings
       try {
-        try {
-          const settings = await loadConfig<AppSettings>('settings.json');
-          if (settings && !cancelled) {
-            useSettingsStore.getState().loadSettings(settings);
-            if (settings.ui?.zoomLevel) {
-              useUIStore.setState({ zoomLevel: settings.ui.zoomLevel });
-            }
-            if (settings.ui?.theme) {
-              setTheme(settings.ui.theme);
-            }
-            if (settings.ui?.editorColorScheme) {
-              useEditorSchemeStore.getState().setScheme(settings.ui.editorColorScheme);
-            }
-            if (settings.build?.compilerPath) {
-              useBuildStore.getState().setCompilerPath(settings.build.compilerPath);
-            }
+        const settings = await loadConfig<AppSettings>('settings.json');
+        if (settings && !cancelled) {
+          useSettingsStore.getState().loadSettings(settings);
+          if (settings.ui?.zoomLevel) {
+            useUIStore.setState({ zoomLevel: settings.ui.zoomLevel });
           }
-        } catch {
-          // defaults are already loaded
+          if (settings.ui?.theme) {
+            setTheme(settings.ui.theme);
+          }
+          if (settings.ui?.editorColorScheme) {
+            useEditorSchemeStore.getState().setScheme(settings.ui.editorColorScheme);
+          }
+          if (settings.build?.compilerPath) {
+            useBuildStore.getState().setCompilerPath(settings.build.compilerPath);
+          }
         }
+      } catch {
+        // Defaults are already loaded
+      }
 
+      // Restore session
+      try {
         await restoreSession();
         await useSolveCounterStore.getState().loadFromDisk();
       } catch (error) {
-        console.error('Startup initialization failed:', error);
-      } finally {
-        window.clearTimeout(startupGuard);
-        markReady();
+        console.error('[Startup] Session restore failed:', error);
       }
+
+      window.clearTimeout(startupGuard);
+      markReady();
     })();
 
     return () => {
@@ -238,13 +266,27 @@ export default function App() {
     };
   }, [setTheme]);
 
+  // Reload AI config when workspace changes
   useEffect(() => {
-    if (!workspaceRoot) {
-      return;
-    }
+    if (!workspaceRoot) return;
     void useAIStore.getState().loadConfig();
   }, [workspaceRoot]);
 
+  // Debug: Log AI status after initialization
+  useEffect(() => {
+    if (!aiInitialized) return;
+
+    const config = useAIStore.getState().config;
+    console.debug('[AI] Configuration loaded:', {
+      enabled: config.enabled,
+      provider: config.activeProvider,
+      autoTrigger: config.completion?.autoTrigger,
+      triggerDelay: config.completion?.triggerDelay,
+      ghostOpacity: config.ui?.ghostTextOpacity ?? config.ui?.ghostOpacity,
+    });
+  }, [aiInitialized]);
+
+  // Auto-save session periodically
   useEffect(() => {
     const interval = setInterval(() => {
       saveSession();
@@ -275,6 +317,7 @@ export default function App() {
     };
   }, []);
 
+  // Update warm factor periodically for time-based theme tinting
   useEffect(() => {
     const timer = setInterval(() => {
       setWarmFactor(getWarmFactorForTime(new Date()));
@@ -282,6 +325,7 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
+  // Apply theme with smooth transitions
   useEffect(() => {
     const root = document.documentElement;
     const target = tintTheme(currentTheme.colors, warmFactor);
@@ -315,10 +359,12 @@ export default function App() {
     return () => window.cancelAnimationFrame(raf);
   }, [currentTheme, warmFactor]);
 
+  // Apply UI font size
   useEffect(() => {
     document.documentElement.style.fontSize = `${uiFontSize || 13}px`;
   }, [uiFontSize]);
 
+  // Apply zoom level
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty('--app-scale', `${zoomLevel / 100}`);
@@ -327,19 +373,23 @@ export default function App() {
     };
   }, [zoomLevel]);
 
+  // Apply AI ghost text opacity CSS variable
   useEffect(() => {
     const safeGhostOpacity = Number.isFinite(ghostOpacity)
       ? Math.min(0.95, Math.max(0.2, ghostOpacity))
-      : 0.5;
+      : 0.6;
     document.documentElement.style.setProperty('--ai-ghost-opacity', `${safeGhostOpacity}`);
+    console.debug('[AI] Ghost opacity set to:', safeGhostOpacity);
   }, [ghostOpacity]);
 
+  // Apply UI font family
   useEffect(() => {
     if (uiFontFamily) {
       document.body.style.fontFamily = uiFontFamily;
     }
   }, [uiFontFamily]);
 
+  // Prevent Ctrl+Wheel zoom (browser default)
   useEffect(() => {
     const preventWheelZoom = (e: WheelEvent) => {
       if (e.ctrlKey) {
@@ -352,6 +402,7 @@ export default function App() {
     };
   }, []);
 
+  // Handle Escape to exit fullscreen
   useEffect(() => {
     let toggling = false;
     const handleEscapeFullscreen = async (e: KeyboardEvent) => {
@@ -374,6 +425,7 @@ export default function App() {
     };
   }, []);
 
+  // Refresh open files when window gains focus
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const handleFocus = () => {
@@ -389,6 +441,7 @@ export default function App() {
     };
   }, []);
 
+  // Animate command palette mount/unmount
   useEffect(() => {
     if (commandPaletteOpen) {
       setPaletteMounted(true);
@@ -403,6 +456,33 @@ export default function App() {
     }, 160);
     return () => window.clearTimeout(timer);
   }, [commandPaletteOpen, paletteMounted]);
+
+  // Expose debug helpers in development
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      (window as any).__AI_DEBUG__ = {
+        getConfig: () => useAIStore.getState().config,
+        getStatus: () => useAIStore.getState().status,
+        getPendingSuggestion: () => useAIStore.getState().pendingSuggestion,
+        toggleAI: () => {
+          const store = useAIStore.getState();
+          store.setEnabled(!store.config.enabled);
+          console.log('[AI] Toggled to:', !store.config.enabled);
+        },
+        triggerManual: () => {
+          // This will be set by EditorArea when editor mounts
+          console.log('[AI] Use editor action ai.triggerSuggestion or Alt+\\');
+        },
+      };
+      console.debug('[AI] Debug helpers available at window.__AI_DEBUG__');
+    }
+
+    return () => {
+      if ((window as any).__AI_DEBUG__) {
+        delete (window as any).__AI_DEBUG__;
+      }
+    };
+  }, []);
 
   const sidebarShellStyle = useMemo(
     () => ({ width: `${sidebarVisible ? sidebarWidth : 0}px` }),
@@ -421,7 +501,10 @@ export default function App() {
         <TitleBar />
         <div className="app-main">
           {activityBarVisible ? <ActivityBar /> : null}
-          <div className={`app-sidebar-shell ${sidebarVisible ? 'open' : 'closed'}`} style={sidebarShellStyle}>
+          <div
+            className={`app-sidebar-shell ${sidebarVisible ? 'open' : 'closed'}`}
+            style={sidebarShellStyle}
+          >
             <Sidebar style={{ width: sidebarWidth }} />
           </div>
           <div
@@ -436,7 +519,10 @@ export default function App() {
                 <div className="app-editor-area">
                   <EditorArea />
                 </div>
-                <div className={`app-bottom-shell ${bottomPanelVisible ? 'open' : 'closed'}`} style={bottomShellStyle}>
+                <div
+                  className={`app-bottom-shell ${bottomPanelVisible ? 'open' : 'closed'}`}
+                  style={bottomShellStyle}
+                >
                   <div
                     className={`resizer vertical ${bottomPanelVisible ? '' : 'hidden'}`}
                     onMouseDown={bottomPanelVisible ? panelResizer.onMouseDown : undefined}
@@ -452,7 +538,9 @@ export default function App() {
         <Notifications />
         {docsOpen ? <DocsPanel /> : null}
       </div>
-      {startupVisible ? <StartupOverlay ready={startupReady} onFinished={() => setStartupVisible(false)} /> : null}
+      {startupVisible ? (
+        <StartupOverlay ready={startupReady} onFinished={() => setStartupVisible(false)} />
+      ) : null}
     </div>
   );
 }

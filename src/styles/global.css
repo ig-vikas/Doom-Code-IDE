@@ -2965,13 +2965,23 @@ input::placeholder, textarea::placeholder {
 .monaco-editor .inline-suggestion-text,
 .monaco-editor .inline-completions-text,
 .monaco-editor .view-line .ai-ghost-text,
-.monaco-editor .view-line .ai-ghost-text-multiline {
+.monaco-editor .view-line .ai-ghost-text-multiline,
+.ai-ghost-text,
+.ai-ghost-text-multiline {
   color: #6a737d !important;
-  opacity: 0.6 !important;
+  opacity: var(--ai-ghost-opacity, 0.6) !important;
   font-style: normal !important;
   font-weight: normal !important;
   pointer-events: none !important;
+  user-select: none !important;
 }
+
+/* For the overlay widget (multi-line ghost text) */
+.ai-ghost-text-multiline {
+  color: #6a737d !important;
+  opacity: var(--ai-ghost-opacity, 0.6) !important;
+}
+
 
 .monaco-editor .ai-ghost-text-multiline {
   white-space: pre !important;
