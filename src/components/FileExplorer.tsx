@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
+import { createPortal } from 'react-dom';
 import {
   VscChevronRight,
   VscCollapseAll,
@@ -798,6 +799,44 @@ export default function FileExplorer() {
     contextMenu?.targetIsRoot,
   ]);
 
+  const contextMenuOverlay = contextMenu && contextMenuActions.length > 0 && typeof document !== 'undefined'
+    ? createPortal(
+      <div
+        className="explorer-context-menu menu-dropdown"
+        style={{
+          position: 'fixed',
+          top: clampMenuPosition(contextMenu.y, 240, window.innerHeight - 12),
+          left: clampMenuPosition(contextMenu.x, 260, window.innerWidth - 12),
+        }}
+        onMouseDown={(event) => event.stopPropagation()}
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        {contextMenuActions.map((action) => (
+          action.separator ? (
+            <div key={action.id} className="menu-separator" />
+          ) : (
+            <button
+              key={action.id}
+              type="button"
+              className={`menu-item explorer-menu-item ${action.danger ? 'danger' : ''}`}
+              disabled={action.disabled}
+              onClick={() => {
+                action.onSelect?.();
+              }}
+            >
+              <span className="explorer-menu-icon">{action.icon}</span>
+              <span className="menu-item-label">{action.label}</span>
+              {action.shortcut ? (
+                <span className="menu-item-shortcut">{action.shortcut}</span>
+              ) : null}
+            </button>
+          )
+        ))}
+      </div>,
+      document.body
+    )
+    : null;
+
   if (!rootPath) {
     return (
       <div style={{ padding: '16px', textAlign: 'center' }}>
@@ -888,41 +927,7 @@ export default function FileExplorer() {
           ))}
         </div>
       )}
-
-      {contextMenu && contextMenuActions.length > 0 && (
-        <div
-          className="explorer-context-menu menu-dropdown"
-          style={{
-            position: 'fixed',
-            top: clampMenuPosition(contextMenu.y, 240, window.innerHeight - 12),
-            left: clampMenuPosition(contextMenu.x, 260, window.innerWidth - 12),
-          }}
-          onMouseDown={(event) => event.stopPropagation()}
-          onContextMenu={(event) => event.preventDefault()}
-        >
-          {contextMenuActions.map((action) => (
-            action.separator ? (
-              <div key={action.id} className="menu-separator" />
-            ) : (
-              <button
-                key={action.id}
-                type="button"
-                className={`menu-item explorer-menu-item ${action.danger ? 'danger' : ''}`}
-                disabled={action.disabled}
-                onClick={() => {
-                  action.onSelect?.();
-                }}
-              >
-                <span className="explorer-menu-icon">{action.icon}</span>
-                <span className="menu-item-label">{action.label}</span>
-                {action.shortcut ? (
-                  <span className="menu-item-shortcut">{action.shortcut}</span>
-                ) : null}
-              </button>
-            )
-          ))}
-        </div>
-      )}
+      {contextMenuOverlay}
     </div>
   );
 }

@@ -10,33 +10,18 @@ interface UseInlineCompletionOptions {
   activeTab?: unknown;
 }
 
-function isAcceptShortcutPressed(
-  event: monaco.IKeyboardEvent,
+function getAcceptActionKeybindings(
   acceptKey: 'tab' | 'enter' | 'ctrl+enter'
-): boolean {
+): number[] {
   if (acceptKey === 'tab') {
-    return (
-      event.keyCode === monaco.KeyCode.Tab
-      && !event.ctrlKey
-      && !event.metaKey
-      && !event.altKey
-    );
+    return [monaco.KeyCode.Tab];
   }
 
   if (acceptKey === 'enter') {
-    return (
-      event.keyCode === monaco.KeyCode.Enter
-      && !event.ctrlKey
-      && !event.metaKey
-      && !event.altKey
-    );
+    return [monaco.KeyCode.Enter];
   }
 
-  return (
-    event.keyCode === monaco.KeyCode.Enter
-    && (event.ctrlKey || event.metaKey)
-    && !event.altKey
-  );
+  return [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter];
 }
 
 export function useInlineCompletion({ editor, enabled = true }: UseInlineCompletionOptions) {
@@ -45,6 +30,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
   const anchorPositionRef = useRef<{ lineNumber: number; column: number } | null>(null);
   const decorationsCollectionRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const widgetRef = useRef<monaco.editor.IContentWidget | null>(null);
+  const suggestionContextKeyRef = useRef<monaco.editor.IContextKey<boolean> | null>(null);
 
   const aiConfig = useAIStore((state) => state.config);
   const pendingSuggestion = useAIStore((state) => state.pendingSuggestion);
@@ -53,13 +39,17 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
   useEffect(() => {
     if (!editor) {
       decorationsCollectionRef.current = null;
+      suggestionContextKeyRef.current = null;
       return;
     }
 
     decorationsCollectionRef.current = editor.createDecorationsCollection([]);
+    suggestionContextKeyRef.current = editor.createContextKey('aiInlineSuggestionVisible', false);
     return () => {
+      suggestionContextKeyRef.current?.set(false);
       decorationsCollectionRef.current?.clear();
       decorationsCollectionRef.current = null;
+      suggestionContextKeyRef.current = null;
     };
   }, [editor]);
 
@@ -81,6 +71,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     removeContentWidget();
     decorationsCollectionRef.current?.set([]);
     anchorPositionRef.current = null;
+    suggestionContextKeyRef.current?.set(false);
   }, [removeContentWidget]);
 
   const renderMultilineWidget = useCallback(
@@ -132,6 +123,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
       if (!text || !text.trim()) {
         decorationsCollectionRef.current.set([]);
         anchorPositionRef.current = null;
+        suggestionContextKeyRef.current?.set(false);
         return;
       }
 
@@ -139,6 +131,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
         lineNumber: position.lineNumber,
         column: position.column,
       };
+      suggestionContextKeyRef.current?.set(true);
 
       const lines = text.split('\n');
       const firstLine = lines[0] ?? '';
@@ -368,30 +361,11 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
       }
     });
 
-    const keydownDisposable = editor.onKeyDown((event) => {
-      const hasSuggestion = !!useAIStore.getState().pendingSuggestion;
-      if (!hasSuggestion) {
-        return;
-      }
-
-      if (isAcceptShortcutPressed(event, aiConfig.completion.acceptKey)) {
-        event.preventDefault();
-        event.stopPropagation();
-        acceptSuggestion();
-        return;
-      }
-
-      if (event.keyCode === monaco.KeyCode.Escape) {
-        event.preventDefault();
-        event.stopPropagation();
-        rejectSuggestion();
-      }
-    });
-
     const acceptAction = editor.addAction({
       id: 'ai.acceptSuggestion',
       label: 'Accept AI Suggestion',
-      keybindings: [],
+      keybindings: getAcceptActionKeybindings(aiConfig.completion.acceptKey),
+      precondition: 'aiInlineSuggestionVisible',
       run: () => {
         acceptSuggestion();
       },
@@ -400,7 +374,8 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     const rejectAction = editor.addAction({
       id: 'ai.rejectSuggestion',
       label: 'Reject AI Suggestion',
-      keybindings: [],
+      keybindings: [monaco.KeyCode.Escape],
+      precondition: 'aiInlineSuggestionVisible',
       run: () => {
         rejectSuggestion();
       },
@@ -436,7 +411,6 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     return () => {
       contentDisposable.dispose();
       cursorDisposable.dispose();
-      keydownDisposable.dispose();
       acceptAction.dispose();
       rejectAction.dispose();
       partialAcceptAction.dispose();

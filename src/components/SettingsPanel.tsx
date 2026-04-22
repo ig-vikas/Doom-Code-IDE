@@ -1,32 +1,98 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, type CSSProperties } from 'react';
 import { useSettingsStore, useThemeStore, useUIStore, useBuildStore, useKeybindingStore, useEditorSchemeStore } from '../stores';
 import { useSolveCounterStore } from '../stores/solveCounterStore';
 import { saveConfigIfChanged } from '../services/configService';
 import type { AppSettings } from '../types';
-import { VscClose, VscEdit } from 'react-icons/vsc';
+import type { IconType } from 'react-icons';
+import {
+  VscClose,
+  VscCode,
+  VscEdit,
+  VscFiles,
+  VscGraph,
+  VscHubot,
+  VscKeyboardTab,
+  VscPaintcan,
+  VscTerminal,
+  VscTools,
+} from 'react-icons/vsc';
 import { defaultKeybindings } from '../config/defaultKeybindings';
 import { EDITOR_FONT_OPTIONS, isAllowedEditorFontFamily } from '../config/lockedAppearance';
 import AISettingsPanel from './ai/AISettingsPanel';
 
 type SettingsCategory = 'editor' | 'appearance' | 'build' | 'terminal' | 'files' | 'ai' | 'keybindings' | 'statistics';
 
-const categories: { id: SettingsCategory; label: string }[] = [
-  { id: 'editor', label: 'Editor' },
-  { id: 'appearance', label: 'Appearance' },
-  { id: 'build', label: 'Build' },
-  { id: 'terminal', label: 'Terminal' },
-  { id: 'files', label: 'Files' },
-  { id: 'ai', label: 'AI' },
-  { id: 'keybindings', label: 'Keybindings' },
-  { id: 'statistics', label: 'Statistics' },
+interface SettingsCategoryDefinition {
+  id: SettingsCategory;
+  label: string;
+  caption: string;
+  accent: string;
+  icon: IconType;
+}
+
+const categories: SettingsCategoryDefinition[] = [
+  { id: 'editor', label: 'Editor', caption: 'Cursor + code flow', accent: 'var(--accent-blue)', icon: VscCode },
+  { id: 'appearance', label: 'Appearance', caption: 'Theme + interface', accent: 'var(--accent-pink)', icon: VscPaintcan },
+  { id: 'build', label: 'Build', caption: 'Compiler + runner', accent: 'var(--accent-orange)', icon: VscTools },
+  { id: 'terminal', label: 'Terminal', caption: 'Shell + output', accent: 'var(--accent-green)', icon: VscTerminal },
+  { id: 'files', label: 'Files', caption: 'Save + formatting', accent: 'var(--accent-yellow)', icon: VscFiles },
+  { id: 'ai', label: 'AI', caption: 'Completion + prompts', accent: 'var(--accent-purple)', icon: VscHubot },
+  { id: 'keybindings', label: 'Keybindings', caption: 'Shortcuts + remaps', accent: 'var(--accent-cyan)', icon: VscKeyboardTab },
+  { id: 'statistics', label: 'Statistics', caption: 'Progress + streaks', accent: 'var(--accent-teal)', icon: VscGraph },
 ];
 
 const editorFontPresets = EDITOR_FONT_OPTIONS;
 
 export default function SettingsPanel() {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('editor');
+  const [hoveredCategory, setHoveredCategory] = useState<SettingsCategory | null>(null);
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   const settings = useSettingsStore((s) => s.settings);
+
+  const activeCategoryMeta = useMemo(
+    () => categories.find((category) => category.id === activeCategory) ?? categories[0],
+    [activeCategory]
+  );
+
+  const focusCategory = hoveredCategory ?? activeCategory;
+  const focusIndex = Math.max(
+    0,
+    categories.findIndex((category) => category.id === focusCategory)
+  );
+
+  const radialItems = useMemo(() => {
+    const arcStart = -78;
+    const arcEnd = 78;
+    const segmentCount = Math.max(categories.length - 1, 1);
+
+    return categories.map((category, index) => {
+      const angle = arcStart + ((arcEnd - arcStart) * index) / segmentCount;
+      const radians = (angle * Math.PI) / 180;
+      const distanceFromFocus = Math.abs(index - focusIndex);
+      const emphasis = Math.max(0, 1 - distanceFromFocus / 4);
+      const isActive = category.id === activeCategory;
+      const orbitRadius = 104 + emphasis * 24 + (isActive ? 8 : 0);
+      const x = Math.cos(radians) * orbitRadius;
+      const y = Math.sin(radians) * orbitRadius * 1.08;
+      const scale = 0.84 + emphasis * 0.18 + (isActive ? 0.08 : 0);
+      const labelOffset = 72 + emphasis * 18 + (isActive ? 8 : 0);
+      const opacity = 0.52 + emphasis * 0.38 + (isActive ? 0.1 : 0);
+
+      return {
+        ...category,
+        isActive,
+        emphasis,
+        opacity,
+        style: {
+          transform: `translate(${Math.round(x)}px, ${Math.round(y)}px) scale(${scale.toFixed(3)})`,
+          opacity,
+          zIndex: 20 + Math.round(emphasis * 10) + (isActive ? 10 : 0),
+          '--orbit-accent': category.accent,
+          '--orbit-label-shift': `${Math.round(labelOffset)}px`,
+        } as CSSProperties,
+      };
+    });
+  }, [activeCategory, focusIndex]);
 
   const handleClose = useCallback(() => {
     setSettingsOpen(false);
@@ -43,16 +109,42 @@ export default function SettingsPanel() {
         </button>
       </div>
       <div className="settings-body">
-        <div className="settings-sidebar">
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              className={`settings-sidebar-item ${activeCategory === cat.id ? 'active' : ''}`}
-              onClick={() => setActiveCategory(cat.id)}
-            >
-              {cat.label}
-            </button>
-          ))}
+        <div className="settings-sidebar settings-sidebar-radial">
+          <div className="settings-sidebar-orbit">
+            <div className="settings-sidebar-core">
+              <span className="settings-sidebar-core-kicker">Navigation Orbit</span>
+              <span className="settings-sidebar-core-title">{activeCategoryMeta.label}</span>
+              <span className="settings-sidebar-core-caption">{activeCategoryMeta.caption}</span>
+            </div>
+            <div className="settings-sidebar-track" aria-hidden="true" />
+            {radialItems.map((category, index) => {
+              const Icon = category.icon;
+              return (
+                <button
+                  key={category.id}
+                  className={`settings-sidebar-item settings-sidebar-orbit-item ${category.isActive ? 'active' : ''}`}
+                  style={category.style}
+                  onClick={() => setActiveCategory(category.id)}
+                  onMouseEnter={() => setHoveredCategory(category.id)}
+                  onMouseLeave={() => setHoveredCategory((current) => (current === category.id ? null : current))}
+                  onFocus={() => setHoveredCategory(category.id)}
+                  onBlur={() => setHoveredCategory((current) => (current === category.id ? null : current))}
+                  aria-pressed={category.isActive}
+                  title={category.label}
+                >
+                  <span className="settings-sidebar-orbit-node">
+                    <Icon />
+                  </span>
+                  <span className="settings-sidebar-orbit-label">
+                    <span className="settings-sidebar-orbit-label-text">{category.label}</span>
+                    <span className="settings-sidebar-orbit-label-meta">
+                      {category.isActive ? `Section ${index + 1} active` : category.caption}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="settings-content">
           {activeCategory === 'editor' && <EditorSettings />}

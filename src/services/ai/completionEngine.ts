@@ -1,3 +1,4 @@
+// completionEngine.ts
 import type {
   AIConfiguration,
   Completion,
@@ -10,14 +11,19 @@ import type { BaseAIProvider } from './providers/baseProvider';
 import { buildContext, type ContextResult } from './contextBuilder';
 import { providerRegistry } from './providers/providerRegistry';
 
+// Tuned for speed: small LRU-style cache, short TTL
+const CACHE_MAX = 50;
+const CACHE_TTL = 30_000; // 30 s — stale completions are rarely useful
+
 class CompletionEngine {
   private currentRequest: { id: string; cancel: () => void } | null = null;
   private cache: Map<string, { completion: Completion; timestamp: number }> = new Map();
-  private readonly CACHE_TTL = 60000;
 
   constructor() {
     this.startCacheCleaner();
   }
+
+  // ─── Public API ────────────────────────────────────────────────────────────
 
   async requestCompletion(
     position: { lineNumber: number; column: number },
@@ -25,29 +31,32 @@ class CompletionEngine {
   ): Promise<Completion | null> {
     const aiStore = useAIStore.getState();
     const editorStore = useEditorStore.getState();
-    const resolvedModelId = resolveActiveProviderModelId(aiStore.config);
 
-    if (!aiStore.config.enabled) {
-      return null;
-    }
+    if (!aiStore.config.enabled) return null;
 
+    // Cancel any in-flight request immediately so we don't waste tokens
     this.cancelCurrentRequest();
 
     const activeTab = editorStore.getActiveTab();
-    if (!activeTab) {
-      return null;
-    }
+    if (!activeTab) return null;
 
-    const activeFilePath = activeTab.path || `untitled://${activeTab.id}/${activeTab.name || 'untitled'}`;
+    const activeFilePath =
+      activeTab.path ??
+      `untitled://${activeTab.id}/${activeTab.name ?? 'untitled'}`;
+
+    const resolvedModelId = resolveActiveProviderModelId(aiStore.config);
 
     try {
-      const context = await buildContext(activeFilePath, position, aiStore.config.context);
+      const context = await buildContext(
+        activeFilePath,
+        position,
+        aiStore.config.context
+      );
 
-      // Removed arbitrary prefix length check to ensure completions can trigger normally
-
+      // Fast path: cache hit
       const cacheKey = this.getCacheKey(context, position);
       const cached = this.cache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
         aiStore.setPendingSuggestion(cached.completion);
         return cached.completion;
       }
@@ -63,12 +72,11 @@ class CompletionEngine {
           suffix: context.suffix,
           language: context.language,
           filePath: context.filePath,
-          cursorPosition: {
-            line: position.lineNumber,
-            column: position.column,
-          },
+          cursorPosition: { line: position.lineNumber, column: position.column },
           cursorMarker: '$0',
-          contextFiles: context.contextFiles,
+          ...(context.contextFiles.length > 0
+            ? { contextFiles: context.contextFiles }
+            : {}),
           forceStructuredPrompt: true,
         },
         settings: aiStore.config.completion,
@@ -89,33 +97,14 @@ class CompletionEngine {
       });
 
       const provider = await providerRegistry.getProvider(request.provider);
-
-      let response: CompletionResponse;
-      if (provider.supportsStreaming()) {
-        try {
-          response = await this.streamCompletion(request, provider);
-          if (!this.hasUsableCompletion(response)) {
-            aiStore.addActivityLog({
-              type: 'system',
-              message: `Streaming returned no text for ${request.provider}; falling back to non-streaming completion.`,
-            });
-            response = await provider.complete(request);
-          }
-        } catch (streamError) {
-          aiStore.addActivityLog({
-            type: 'error',
-            message: `Streaming failed for ${request.provider}; retrying non-streaming completion.`,
-          });
-          console.warn('[Completion Engine] Streaming failed, falling back:', streamError);
-          response = await provider.complete(request);
-        }
-      } else {
-        response = await provider.complete(request);
-      }
+      const response = await this.executeCompletion(request, provider);
 
       return this.handleResponse(response, cacheKey);
     } catch (error) {
-      console.error('[Completion Engine] Error:', error);
+      // Ignore cancellation errors — they're intentional
+      if (isCancellation(error)) return null;
+
+      console.error('[CompletionEngine]', error);
       aiStore.setStatus('error');
       aiStore.addActivityLog({
         type: 'error',
@@ -127,104 +116,40 @@ class CompletionEngine {
     }
   }
 
-  private async streamCompletion(
-    request: CompletionRequest,
-    provider: BaseAIProvider
-  ): Promise<CompletionResponse> {
-    const aiStore = useAIStore.getState();
-
-    return new Promise((resolve, reject) => {
-      let fullText = '';
-
-      const cancel = provider.streamComplete(
-        request,
-        (chunk: string) => {
-          fullText += chunk;
-          aiStore.setStatus('streaming');
-          aiStore.setPendingSuggestion({
-            text: fullText,
-            displayText: fullText,
-            insertText: fullText,
-          });
-        },
-        (response: CompletionResponse) => {
-          aiStore.setLastCompletion(response);
-          aiStore.setStatus('idle');
-          resolve(response);
-        },
-        (error: Error) => {
-          aiStore.setStatus('error');
-          reject(error);
-        }
-      );
-
-      this.currentRequest = { id: request.id, cancel };
-    });
-  }
-
-  private handleResponse(response: CompletionResponse, cacheKey: string): Completion | null {
-    const aiStore = useAIStore.getState();
-
-    aiStore.setLastCompletion(response);
-    aiStore.setStatus('idle');
-
-    if (response.error) {
-      console.error('[Completion Engine] Response error:', response.error);
-      return null;
-    }
-
-    const completion = response.completions[0];
-    if (completion && completion.insertText.trim()) {
-      this.cache.set(cacheKey, {
-        completion,
-        timestamp: Date.now(),
-      });
-
-      aiStore.setPendingSuggestion(completion);
-      return completion;
-    }
-
-    return null;
-  }
-
   acceptSuggestion(): string | null {
     const aiStore = useAIStore.getState();
     const suggestion = aiStore.pendingSuggestion;
+    if (!suggestion) return null;
 
-    if (suggestion) {
-      aiStore.recordAcceptedCompletion(
-        aiStore.lastCompletion?.usage?.completionTokens || 0,
-        aiStore.lastCompletion?.usage?.estimatedCost || 0
-      );
-
-      aiStore.setPendingSuggestion(null);
-      return suggestion.insertText;
-    }
-
-    return null;
+    aiStore.recordAcceptedCompletion(
+      aiStore.lastCompletion?.usage?.completionTokens ?? 0,
+      aiStore.lastCompletion?.usage?.estimatedCost ?? 0
+    );
+    aiStore.setPendingSuggestion(null);
+    return suggestion.insertText;
   }
 
   rejectSuggestion(): void {
     const aiStore = useAIStore.getState();
-
-    if (aiStore.pendingSuggestion) {
-      aiStore.recordRejectedCompletion();
-      aiStore.setPendingSuggestion(null);
-    }
+    if (!aiStore.pendingSuggestion) return;
+    aiStore.recordRejectedCompletion();
+    aiStore.setPendingSuggestion(null);
   }
 
-  acceptPartialSuggestion(wordCount: number = 1): string | null {
+  /**
+   * Accepts the next `wordCount` words of the pending suggestion and leaves
+   * the remainder queued so the user can keep accepting incrementally.
+   */
+  acceptPartialSuggestion(wordCount = 1): string | null {
     const aiStore = useAIStore.getState();
     const suggestion = aiStore.pendingSuggestion;
+    if (!suggestion) return null;
 
-    if (!suggestion) {
-      return null;
-    }
-
-    const words = suggestion.insertText.split(/(\s+)/);
-    const toAcceptCount = Math.min(wordCount * 2, words.length);
-    const toAccept = words.slice(0, toAcceptCount).join('');
-    const remaining = words.slice(toAcceptCount).join('');
+    // Split on whitespace boundaries while preserving the delimiters
+    const parts = suggestion.insertText.split(/(\s+)/);
+    const takeCount = Math.min(wordCount * 2, parts.length);
+    const toAccept = parts.slice(0, takeCount).join('');
+    const remaining = parts.slice(takeCount).join('');
 
     if (remaining.trim()) {
       aiStore.setPendingSuggestion({
@@ -245,45 +170,159 @@ class CompletionEngine {
       this.currentRequest.cancel();
       this.currentRequest = null;
     }
-
     const aiStore = useAIStore.getState();
     aiStore.setStatus('idle');
     aiStore.setPendingSuggestion(null);
-  }
-
-  private getCacheKey(context: ContextResult, position: { lineNumber: number; column: number }): string {
-    const contextFileKey = context.contextFiles
-      .map((contextFile) => `${contextFile.path}:${contextFile.content.slice(0, 200)}`)
-      .join('|');
-
-    return [
-      context.filePath,
-      position.lineNumber,
-      position.column,
-      context.prefix.slice(-200),
-      (context.suffix || '').slice(0, 200),
-      contextFileKey,
-    ].join(':');
-  }
-
-  private hasUsableCompletion(response: CompletionResponse): boolean {
-    const text = response.completions[0]?.insertText || '';
-    return text.trim().length > 0 && !response.error;
   }
 
   clearCache(): void {
     this.cache.clear();
   }
 
-  private startCacheCleaner(): void {
-    setInterval(() => {
-      const now = Date.now();
-      for (const [key, value] of this.cache.entries()) {
-        if (now - value.timestamp > this.CACHE_TTL) {
-          this.cache.delete(key);
+  // ─── Private helpers ───────────────────────────────────────────────────────
+
+  /**
+   * Tries streaming first; falls back to a single non-streaming call.
+   * Both paths share the same error boundary in `requestCompletion`.
+   */
+  private async executeCompletion(
+    request: CompletionRequest,
+    provider: BaseAIProvider
+  ): Promise<CompletionResponse> {
+    if (!provider.supportsStreaming()) {
+      return provider.complete(request);
+    }
+
+    try {
+      const response = await this.streamCompletion(request, provider);
+      if (this.hasUsableCompletion(response)) return response;
+
+      useAIStore.getState().addActivityLog({
+        type: 'system',
+        message: `Streaming returned empty text; falling back to non-streaming.`,
+      });
+    } catch (streamError) {
+      if (isCancellation(streamError)) throw streamError; // propagate
+
+      useAIStore.getState().addActivityLog({
+        type: 'error',
+        message: `Streaming failed; retrying non-streaming.`,
+      });
+      console.warn('[CompletionEngine] Stream error, falling back:', streamError);
+    }
+
+    return provider.complete(request);
+  }
+
+  private streamCompletion(
+    request: CompletionRequest,
+    provider: BaseAIProvider
+  ): Promise<CompletionResponse> {
+    const aiStore = useAIStore.getState();
+
+    return new Promise((resolve, reject) => {
+      let accumulated = '';
+
+      const cancel = provider.streamComplete(
+        request,
+        (chunk: string) => {
+          accumulated += chunk;
+          aiStore.setStatus('streaming');
+          aiStore.setPendingSuggestion({
+            text: accumulated,
+            displayText: accumulated,
+            insertText: accumulated,
+          });
+        },
+        (response: CompletionResponse) => {
+          aiStore.setLastCompletion(response);
+          aiStore.setStatus('idle');
+          resolve(response);
+        },
+        (error: Error) => {
+          aiStore.setStatus('error');
+          reject(error);
         }
+      );
+
+      // Register cancel handle so cancelCurrentRequest() works
+      this.currentRequest = { id: request.id, cancel };
+    });
+  }
+
+  private handleResponse(
+    response: CompletionResponse,
+    cacheKey: string
+  ): Completion | null {
+    const aiStore = useAIStore.getState();
+    aiStore.setLastCompletion(response);
+    aiStore.setStatus('idle');
+
+    if (response.error) {
+      console.error('[CompletionEngine] Response error:', response.error);
+      return null;
+    }
+
+    const completion = response.completions[0];
+    if (!completion?.insertText.trim()) return null;
+
+    this.cacheSet(cacheKey, completion);
+    aiStore.setPendingSuggestion(completion);
+    return completion;
+  }
+
+  // ─── Cache ─────────────────────────────────────────────────────────────────
+
+  /**
+   * LRU-style insert: evict the oldest entry when the cap is reached.
+   */
+  private cacheSet(key: string, completion: Completion): void {
+    if (this.cache.size >= CACHE_MAX) {
+      const oldest = this.cache.keys().next().value;
+      if (oldest !== undefined) this.cache.delete(oldest);
+    }
+    this.cache.set(key, { completion, timestamp: Date.now() });
+  }
+
+  private startCacheCleaner(): void {
+    // Run every 30 s to stay in sync with CACHE_TTL
+    setInterval(() => {
+      const cutoff = Date.now() - CACHE_TTL;
+      for (const [key, value] of this.cache) {
+        if (value.timestamp < cutoff) this.cache.delete(key);
       }
-    }, 60000);
+    }, 30_000);
+  }
+
+  // ─── Utilities ─────────────────────────────────────────────────────────────
+
+  /**
+   * Cache key uses only the last 150 chars of the prefix (the nearest context
+   * is what actually drives the completion) and the first 100 of the suffix.
+   */
+  private getCacheKey(
+    context: ContextResult,
+    position: { lineNumber: number; column: number }
+  ): string {
+    const filesKey = context.contextFiles
+      .map((f) => `${f.path}:${f.content.slice(0, 100)}`)
+      .join('|');
+
+    return [
+      context.filePath,
+      position.lineNumber,
+      position.column,
+      context.prefix.slice(-150),
+      (context.suffix ?? '').slice(0, 100),
+      filesKey,
+    ].join('\x00'); // null-byte separator avoids collisions
+  }
+
+  private hasUsableCompletion(response: CompletionResponse): boolean {
+    return (
+      !response.error &&
+      (response.completions[0]?.insertText ?? '').trim().length > 0
+    );
   }
 
   private generateRequestId(): string {
@@ -293,10 +332,21 @@ class CompletionEngine {
 
 export const completionEngine = new CompletionEngine();
 
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+
+function isCancellation(error: unknown): boolean {
+  if (!error) return false;
+  const msg = String((error as Error).message ?? error).toLowerCase();
+  return msg.includes('cancel') || msg.includes('abort');
+}
+
 function resolveActiveProviderModelId(config: AIConfiguration): string {
   switch (config.activeProvider) {
     case 'openrouter':
-      return config.providers.openrouter.customModelInput || config.providers.openrouter.modelId;
+      return (
+        config.providers.openrouter.customModelInput ||
+        config.providers.openrouter.modelId
+      );
     case 'deepseek':
       return config.providers.deepseek.model;
     case 'google':
