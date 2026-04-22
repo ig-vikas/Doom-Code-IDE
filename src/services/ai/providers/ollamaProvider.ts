@@ -232,7 +232,7 @@ export class OllamaProvider extends BaseAIProvider {
     );
     const userPrompt = PromptTemplates.buildEnhancedUserPrompt(prompt, commentIntent);
 
-    if (this.supportsFIM() && prompt.suffix && prompt.suffix.trim()) {
+    if (!prompt.forceStructuredPrompt && this.supportsFIM() && prompt.suffix && prompt.suffix.trim()) {
       return `<|fim_prefix|>${prompt.prefix || ''}<|fim_suffix|>${prompt.suffix}<|fim_middle|>`;
     }
 

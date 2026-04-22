@@ -1,6 +1,8 @@
-import type { ContextSettings } from '../../types/ai';
+import type { CompletionContextFile, ContextSettings } from '../../types/ai';
 import { useEditorStore } from '../../stores/editorStore';
+import { useFileExplorerStore } from '../../stores/fileExplorerStore';
 import { getActiveEditor, getActiveMonaco } from '../commandService';
+import { fileExists, readFileContent } from '../fileService';
 
 export interface ContextResult {
   prefix: string;
@@ -9,6 +11,7 @@ export interface ContextResult {
   language: string;
   filePath: string;
   estimatedTokens: number;
+  contextFiles: CompletionContextFile[];
 }
 
 const LANGUAGE_MAP: Record<string, string> = {
@@ -115,6 +118,93 @@ function resolveModelForContext(filePath: string): any | null {
   return models[0] || null;
 }
 
+function isUntitledPath(filePath: string): boolean {
+  return filePath.startsWith('untitled://');
+}
+
+function getDirectoryPath(filePath: string): string | null {
+  if (!filePath || isUntitledPath(filePath)) {
+    return null;
+  }
+
+  const lastSlashIndex = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+  return lastSlashIndex >= 0 ? filePath.slice(0, lastSlashIndex) : null;
+}
+
+function joinPath(basePath: string, fileName: string): string {
+  return `${basePath.replace(/[\\/]+$/, '')}\\${fileName}`;
+}
+
+function truncateContextContent(
+  content: string,
+  maxLines: number = 120,
+  maxChars: number = 6000
+): { content: string; truncated: boolean } {
+  const lines = content.split('\n');
+  const limitedLines = lines.slice(0, maxLines);
+  let truncated = limitedLines.length < lines.length;
+  let truncatedContent = limitedLines.join('\n');
+
+  if (truncatedContent.length > maxChars) {
+    truncatedContent = truncatedContent.slice(0, maxChars);
+    truncated = true;
+  }
+
+  return {
+    content: truncatedContent.trimEnd(),
+    truncated,
+  };
+}
+
+async function readContextFileFromModelOrDisk(filePath: string): Promise<string | null> {
+  const models = getAllMonacoModels();
+  const model = findModelByPath(filePath, models);
+  if (model?.getValue) {
+    return model.getValue();
+  }
+
+  if (!(await fileExists(filePath))) {
+    return null;
+  }
+
+  try {
+    return await readFileContent(filePath);
+  } catch {
+    return null;
+  }
+}
+
+async function buildInputContextFile(currentFilePath: string): Promise<CompletionContextFile | null> {
+  const rootPath = useFileExplorerStore.getState().rootPath;
+  const currentDir = getDirectoryPath(currentFilePath);
+  const candidatePaths = [currentDir, rootPath]
+    .filter((path): path is string => Boolean(path))
+    .map((path) => joinPath(path, 'input.txt'))
+    .filter((path, index, paths) => paths.findIndex((candidate) => normalizePath(candidate) === normalizePath(path)) === index)
+    .filter((path) => normalizePath(path) !== normalizePath(currentFilePath));
+
+  for (const candidatePath of candidatePaths) {
+    const rawContent = await readContextFileFromModelOrDisk(candidatePath);
+    if (!rawContent || rawContent.trim().length === 0) {
+      continue;
+    }
+
+    const { content, truncated } = truncateContextContent(rawContent);
+    if (!content) {
+      continue;
+    }
+
+    return {
+      label: 'input.txt',
+      path: candidatePath,
+      content,
+      truncated,
+    };
+  }
+
+  return null;
+}
+
 export async function buildContext(
   filePath: string,
   position: { lineNumber: number; column: number },
@@ -180,7 +270,10 @@ export async function buildContext(
     }
   }
 
-  const estimatedTokens = estimateTokens(prefix + (hasSuffix ? suffix : ''));
+  const inputContextFile = await buildInputContextFile(filePath);
+  const contextFiles = inputContextFile ? [inputContextFile] : [];
+  const extraContextText = contextFiles.map((contextFile) => contextFile.content).join('\n');
+  const estimatedTokens = estimateTokens(prefix + (hasSuffix ? suffix : '') + extraContextText);
 
   return {
     prefix,
@@ -189,6 +282,7 @@ export async function buildContext(
     language,
     filePath,
     estimatedTokens,
+    contextFiles,
   };
 }
 

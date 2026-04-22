@@ -5,6 +5,7 @@ export interface ShellOutput {
   stderr: string;
   exitCode: number | null;
   success: boolean;
+  terminatedByOutputLimit: boolean;
 }
 
 export async function openInFileExplorer(path: string): Promise<void> {

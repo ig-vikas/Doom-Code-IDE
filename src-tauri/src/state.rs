@@ -4,9 +4,10 @@ use std::sync::{Arc, Mutex};
 #[derive(Debug, Clone)]
 pub struct RunningProcess {
     pub pid: u32,
-    pub exec_path: String,
+    pub cleanup_path: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct AppState {
     pub running_process: Arc<Mutex<Option<RunningProcess>>>,
     pub latest_search_token: Arc<AtomicU64>,

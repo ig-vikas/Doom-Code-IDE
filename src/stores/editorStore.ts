@@ -50,6 +50,8 @@ interface EditorState {
   getAllGroups: () => Extract<SplitNode, { type: 'leaf' }>[];
   findTabByPath: (path: string) => { groupId: string; tab: FileTab } | null;
   refreshTabContent: (tabId: string, content: string) => void;
+  renameTabsForPath: (oldPath: string, newPath: string) => void;
+  closeTabsForPaths: (paths: string[]) => void;
   updateSplitSizes: (parentPath: number[], sizes: number[]) => void;
   pulseTabSaveByPath: (path: string) => void;
 }
@@ -127,6 +129,33 @@ function findTabLocation(node: SplitNode, tabId: string): { groupId: string; tab
 
 function normalizePathKey(path: string): string {
   return path.replace(/\//g, '\\').toLowerCase();
+}
+
+function isSameOrDescendantPath(path: string, prefix: string): boolean {
+  const normalizedPath = normalizePathKey(path);
+  const normalizedPrefix = normalizePathKey(prefix);
+  return (
+    normalizedPath === normalizedPrefix
+    || normalizedPath.startsWith(`${normalizedPrefix}\\`)
+  );
+}
+
+function replacePathPrefix(path: string, oldPrefix: string, newPrefix: string): string {
+  const normalizedPath = path.replace(/\//g, '\\');
+  const normalizedOldPrefix = oldPrefix.replace(/\//g, '\\');
+  const normalizedNewPrefix = newPrefix.replace(/\//g, '\\');
+
+  if (normalizePathKey(path) === normalizePathKey(oldPrefix)) {
+    return normalizedNewPrefix;
+  }
+
+  const relativePath = normalizedPath
+    .slice(normalizedOldPrefix.length)
+    .replace(/^\\+/, '');
+
+  return relativePath
+    ? `${normalizedNewPrefix}\\${relativePath}`
+    : normalizedNewPrefix;
 }
 
 function getTabViewStateKey(tab: Pick<FileTab, 'id' | 'path'> | null): string | null {
@@ -856,6 +885,97 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         ),
       })),
     }));
+  },
+
+  renameTabsForPath: (oldPath, newPath) => {
+    set((state) => {
+      const nextViewState: Record<string, StoredFileViewState> = {};
+
+      for (const [key, value] of Object.entries(state.fileViewState)) {
+        if (isSameOrDescendantPath(key, oldPath)) {
+          const nextKey = normalizePathKey(replacePathPrefix(key, oldPath, newPath));
+          nextViewState[nextKey] = value;
+        } else {
+          nextViewState[key] = value;
+        }
+      }
+
+      const updateTabPath = (tab: FileTab): FileTab => {
+        if (!tab.path || !isSameOrDescendantPath(tab.path, oldPath)) {
+          return tab;
+        }
+
+        const nextPath = replacePathPrefix(tab.path, oldPath, newPath);
+        return {
+          ...tab,
+          path: nextPath,
+          name: getFileName(nextPath),
+        };
+      };
+
+      const updateNodePaths = (node: SplitNode): SplitNode => {
+        if (node.type === 'leaf') {
+          return {
+            ...node,
+            tabs: node.tabs.map(updateTabPath),
+          };
+        }
+
+        return {
+          ...node,
+          children: node.children.map(updateNodePaths),
+        };
+      };
+
+      return {
+        layout: updateNodePaths(state.layout),
+        closedTabs: state.closedTabs.map(updateTabPath),
+        fileViewState: nextViewState,
+      };
+    });
+  },
+
+  closeTabsForPaths: (paths) => {
+    if (paths.length === 0) return;
+
+    set((state) => {
+      const shouldCloseTab = (tab: FileTab): boolean => (
+        !!tab.path && paths.some((path) => isSameOrDescendantPath(tab.path!, path))
+      );
+
+      const updateNodeTabs = (node: SplitNode): SplitNode => {
+        if (node.type === 'leaf') {
+          const remainingTabs = node.tabs.filter((tab) => !shouldCloseTab(tab));
+          const nextActiveTabId = remainingTabs.some((tab) => tab.id === node.activeTabId)
+            ? node.activeTabId
+            : remainingTabs[remainingTabs.length - 1]?.id ?? null;
+
+          return {
+            ...node,
+            tabs: remainingTabs,
+            activeTabId: nextActiveTabId,
+          };
+        }
+
+        return {
+          ...node,
+          children: node.children.map(updateNodeTabs),
+        };
+      };
+
+      const updatedLayout = updateNodeTabs(state.layout);
+      const cleanedLayout = removeEmptyGroups(updatedLayout)
+        ?? { type: 'leaf', id: initialGroupId, tabs: [], activeTabId: null };
+      const groups = getAllGroups(cleanedLayout);
+      const activeGroupStillExists = groups.some((group) => group.id === state.activeGroupId);
+
+      return {
+        layout: cleanedLayout,
+        activeGroupId: activeGroupStillExists ? state.activeGroupId : groups[0]?.id ?? initialGroupId,
+        closedTabs: state.closedTabs.filter((tab) => !shouldCloseTab(tab)),
+        fileViewState: pruneFileViewStateForOpenTabs(cleanedLayout, state.fileViewState),
+      };
+    });
   },
 
   updateSplitSizes: (parentPath, sizes) => {

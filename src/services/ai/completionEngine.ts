@@ -58,7 +58,7 @@ class CompletionEngine {
         provider: aiStore.config.activeProvider,
         modelId: resolvedModelId,
         prompt: {
-          type: context.hasSuffix ? 'fim' : 'completion',
+          type: 'completion',
           prefix: context.prefix,
           suffix: context.suffix,
           language: context.language,
@@ -67,6 +67,9 @@ class CompletionEngine {
             line: position.lineNumber,
             column: position.column,
           },
+          cursorMarker: '$0',
+          contextFiles: context.contextFiles,
+          forceStructuredPrompt: true,
         },
         settings: aiStore.config.completion,
         metadata: {
@@ -249,7 +252,18 @@ class CompletionEngine {
   }
 
   private getCacheKey(context: ContextResult, position: { lineNumber: number; column: number }): string {
-    return `${context.filePath}:${position.lineNumber}:${position.column}:${context.prefix.slice(-100)}`;
+    const contextFileKey = context.contextFiles
+      .map((contextFile) => `${contextFile.path}:${contextFile.content.slice(0, 200)}`)
+      .join('|');
+
+    return [
+      context.filePath,
+      position.lineNumber,
+      position.column,
+      context.prefix.slice(-200),
+      (context.suffix || '').slice(0, 200),
+      contextFileKey,
+    ].join(':');
   }
 
   private hasUsableCompletion(response: CompletionResponse): boolean {

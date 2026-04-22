@@ -147,6 +147,16 @@ export interface CompletionPrompt {
   language: string;
   filePath: string;
   cursorPosition: { line: number; column: number };
+  cursorMarker?: string;
+  contextFiles?: CompletionContextFile[];
+  forceStructuredPrompt?: boolean;
+}
+
+export interface CompletionContextFile {
+  label: string;
+  path: string;
+  content: string;
+  truncated?: boolean;
 }
 
 export interface ChatMessage {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import * as monaco from 'monaco-editor';
 import { useAIStore } from '../stores/aiStore';
 import { completionEngine } from '../services/ai/completionEngine';
@@ -16,120 +16,175 @@ function isAcceptShortcutPressed(
 ): boolean {
   if (acceptKey === 'tab') {
     return (
-      event.keyCode === monaco.KeyCode.Tab &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey
+      event.keyCode === monaco.KeyCode.Tab
+      && !event.ctrlKey
+      && !event.metaKey
+      && !event.altKey
     );
   }
 
   if (acceptKey === 'enter') {
     return (
-      event.keyCode === monaco.KeyCode.Enter &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey
+      event.keyCode === monaco.KeyCode.Enter
+      && !event.ctrlKey
+      && !event.metaKey
+      && !event.altKey
     );
   }
 
   return (
-    event.keyCode === monaco.KeyCode.Enter &&
-    (event.ctrlKey || event.metaKey) &&
-    !event.altKey
+    event.keyCode === monaco.KeyCode.Enter
+    && (event.ctrlKey || event.metaKey)
+    && !event.altKey
   );
 }
 
 export function useInlineCompletion({ editor, enabled = true }: UseInlineCompletionOptions) {
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const decorationsRef = useRef<string[]>([]);
-  const lastTriggerPositionRef = useRef<{ lineNumber: number; column: number } | null>(null);
+  const requestIdRef = useRef(0);
+  const anchorPositionRef = useRef<{ lineNumber: number; column: number } | null>(null);
+  const decorationsCollectionRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+  const widgetRef = useRef<monaco.editor.IContentWidget | null>(null);
 
   const aiConfig = useAIStore((state) => state.config);
   const pendingSuggestion = useAIStore((state) => state.pendingSuggestion);
   const status = useAIStore((state) => state.status);
 
-  /**
-   * Render ghost text decorations in the editor.
-   * VS Code style: same font as code, just different color + opacity.
-   * Uses `after` injection for the first line and multi-line content.
-   */
+  useEffect(() => {
+    if (!editor) {
+      decorationsCollectionRef.current = null;
+      return;
+    }
+
+    decorationsCollectionRef.current = editor.createDecorationsCollection([]);
+    return () => {
+      decorationsCollectionRef.current?.clear();
+      decorationsCollectionRef.current = null;
+    };
+  }, [editor]);
+
+  const removeContentWidget = useCallback(() => {
+    if (!editor || !widgetRef.current) {
+      return;
+    }
+
+    try {
+      editor.removeContentWidget(widgetRef.current);
+    } catch {
+      // Widget may already be gone during teardown.
+    }
+
+    widgetRef.current = null;
+  }, [editor]);
+
+  const clearGhostText = useCallback(() => {
+    removeContentWidget();
+    decorationsCollectionRef.current?.set([]);
+    anchorPositionRef.current = null;
+  }, [removeContentWidget]);
+
+  const renderMultilineWidget = useCallback(
+    (lines: string[], position: monaco.Position) => {
+      if (!editor || lines.length === 0) {
+        return;
+      }
+
+      removeContentWidget();
+
+      const domNode = document.createElement('div');
+      domNode.className = 'ai-ghost-text-widget ai-ghost-text-multiline';
+      domNode.textContent = lines.join('\n');
+      domNode.style.pointerEvents = 'none';
+      domNode.style.whiteSpace = 'pre';
+      domNode.style.zIndex = '1400';
+      domNode.style.lineHeight = `${editor.getOption(monaco.editor.EditorOption.lineHeight)}px`;
+      editor.applyFontInfo(domNode);
+
+      const widgetId = `ai-inline-ghost-${Date.now()}`;
+      const multilineAnchor = new monaco.Position(position.lineNumber, 1);
+      const widget: monaco.editor.IContentWidget = {
+        allowEditorOverflow: true,
+        suppressMouseDown: true,
+        getId: () => widgetId,
+        getDomNode: () => domNode,
+        getPosition: () => ({
+          position: multilineAnchor,
+          preference: [monaco.editor.ContentWidgetPositionPreference.BELOW],
+          positionAffinity: monaco.editor.PositionAffinity.Right,
+        }),
+      };
+
+      editor.addContentWidget(widget);
+      editor.layoutContentWidget(widget);
+      widgetRef.current = widget;
+    },
+    [editor, removeContentWidget]
+  );
+
   const updateGhostText = useCallback(
     (text: string | null, position: monaco.Position) => {
-      if (!editor) {
+      if (!editor || !decorationsCollectionRef.current) {
         return;
       }
+
+      removeContentWidget();
 
       if (!text || !text.trim()) {
-        decorationsRef.current = editor.deltaDecorations(decorationsRef.current, []);
+        decorationsCollectionRef.current.set([]);
+        anchorPositionRef.current = null;
         return;
       }
 
+      anchorPositionRef.current = {
+        lineNumber: position.lineNumber,
+        column: position.column,
+      };
+
       const lines = text.split('\n');
-      const firstLine = lines[0];
+      const firstLine = lines[0] ?? '';
       const restLines = lines.slice(1);
       const decorations: monaco.editor.IModelDeltaDecoration[] = [];
 
-      // First line — inject after cursor on the same line
-      if (firstLine) {
+      if (firstLine.length > 0) {
         decorations.push({
-          range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+          range: new monaco.Range(
+            position.lineNumber,
+            position.column,
+            position.lineNumber,
+            position.column
+          ),
           options: {
             after: {
               content: firstLine,
               inlineClassName: 'ai-ghost-text',
               cursorStops: monaco.editor.InjectedTextCursorStops.None,
             },
-            // The decoration range itself should not have a className that affects existing text
-            zIndex: 1200,
+            zIndex: 1400,
           },
         });
       }
 
-      // Multi-line content — render additional lines
-      const model = editor.getModel();
-      const maxLine = model?.getLineCount() || position.lineNumber;
-      if (restLines.length > 0 && aiConfig.completion.multiLineEnabled) {
-        for (let index = 0; index < restLines.length; index += 1) {
-          const targetLine = position.lineNumber + index + 1;
-          if (targetLine > maxLine + 1) {
-            break;
-          }
-          decorations.push({
-            range: new monaco.Range(targetLine, 1, targetLine, 1),
-            options: {
-              before: {
-                content: restLines[index] + '\n',
-                inlineClassName: 'ai-ghost-text-multiline',
-                cursorStops: monaco.editor.InjectedTextCursorStops.None,
-              },
-              zIndex: 1200,
-            },
-          });
-        }
-      }
+      decorationsCollectionRef.current.set(decorations);
 
-      decorationsRef.current = editor.deltaDecorations(decorationsRef.current, decorations);
+      if (restLines.length > 0 && aiConfig.completion.multiLineEnabled) {
+        renderMultilineWidget(restLines, position);
+      }
     },
-    [editor, aiConfig.completion.multiLineEnabled]
+    [editor, aiConfig.completion.multiLineEnabled, removeContentWidget, renderMultilineWidget]
   );
 
-  /**
-   * Trigger a completion request. Validates context before sending.
-   */
   const triggerCompletion = useCallback(
     async (position: { lineNumber: number; column: number }, triggerKind: 'auto' | 'manual') => {
       if (!editor || !aiConfig.enabled || !enabled) {
         return;
       }
 
-      // Skip for plain text files
       const model = editor.getModel();
       const languageId = model?.getLanguageId?.();
       if (languageId === 'plaintext' || languageId === 'text') {
         return;
       }
 
-      // For auto-trigger, skip if we are on line 1 and it's completely empty
       if (triggerKind === 'auto' && position.lineNumber <= 1) {
         const lineContent = model?.getLineContent(position.lineNumber) || '';
         if (lineContent.trim().length === 0) {
@@ -137,30 +192,38 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
         }
       }
 
-      lastTriggerPositionRef.current = position;
+      const requestId = ++requestIdRef.current;
+      anchorPositionRef.current = {
+        lineNumber: position.lineNumber,
+        column: position.column,
+      };
 
       try {
         const completion = await completionEngine.requestCompletion(position, triggerKind);
-        const currentPosition = editor.getPosition();
 
+        if (requestIdRef.current !== requestId) {
+          return;
+        }
+
+        const currentPosition = editor.getPosition();
         if (
-          currentPosition &&
-          currentPosition.lineNumber === position.lineNumber &&
-          Math.abs(currentPosition.column - position.column) <= 2 &&
-          completion
+          currentPosition
+          && currentPosition.lineNumber === position.lineNumber
+          && currentPosition.column === position.column
+          && completion
         ) {
           updateGhostText(completion.displayText || completion.text, currentPosition);
         }
       } catch (error) {
+        if (requestIdRef.current !== requestId) {
+          return;
+        }
         console.error('[AI Inline] Completion error:', error);
       }
     },
     [editor, aiConfig.enabled, enabled, updateGhostText]
   );
 
-  /**
-   * Accept the current pending suggestion — insert text at cursor.
-   */
   const acceptSuggestion = useCallback((): boolean => {
     if (!editor || !pendingSuggestion) {
       return false;
@@ -176,42 +239,39 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
       return false;
     }
 
+    clearGhostText();
+
     const lines = insertText.split('\n');
     editor.executeEdits('ai-completion', [
       {
-        range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+        range: new monaco.Range(
+          position.lineNumber,
+          position.column,
+          position.lineNumber,
+          position.column
+        ),
         text: insertText,
       },
     ]);
 
     const newLine = position.lineNumber + lines.length - 1;
-    const newColumn = lines.length === 1 ? position.column + insertText.length : lines[lines.length - 1].length + 1;
+    const newColumn = lines.length === 1
+      ? position.column + insertText.length
+      : (lines[lines.length - 1]?.length ?? 0) + 1;
 
     editor.setPosition({ lineNumber: newLine, column: newColumn });
     editor.focus();
-    updateGhostText(null, position);
 
     return true;
-  }, [editor, pendingSuggestion, updateGhostText]);
+  }, [editor, pendingSuggestion, clearGhostText]);
 
-  /**
-   * Reject (dismiss) the current pending suggestion.
-   */
   const rejectSuggestion = useCallback(() => {
-    if (!pendingSuggestion) {
-      return;
+    if (useAIStore.getState().pendingSuggestion) {
+      completionEngine.rejectSuggestion();
     }
+    clearGhostText();
+  }, [clearGhostText]);
 
-    completionEngine.rejectSuggestion();
-    const position = editor?.getPosition();
-    if (position) {
-      updateGhostText(null, position);
-    }
-  }, [editor, pendingSuggestion, updateGhostText]);
-
-  /**
-   * Accept the next N words from the pending suggestion (partial accept).
-   */
   const acceptPartialSuggestion = useCallback(
     (wordCount: number = 1): boolean => {
       if (!editor || !pendingSuggestion) {
@@ -230,48 +290,56 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
 
       editor.executeEdits('ai-completion-partial', [
         {
-          range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+          range: new monaco.Range(
+            position.lineNumber,
+            position.column,
+            position.lineNumber,
+            position.column
+          ),
           text: insertText,
         },
       ]);
 
-      const newColumn = position.column + insertText.length;
-      editor.setPosition({ lineNumber: position.lineNumber, column: newColumn });
+      const lines = insertText.split('\n');
+      const newLine = position.lineNumber + lines.length - 1;
+      const newColumn = lines.length === 1
+        ? position.column + insertText.length
+        : (lines[lines.length - 1]?.length ?? 0) + 1;
+
+      editor.setPosition({ lineNumber: newLine, column: newColumn });
       editor.focus();
 
       const remaining = useAIStore.getState().pendingSuggestion;
       if (remaining) {
         updateGhostText(
           remaining.displayText || remaining.text,
-          new monaco.Position(position.lineNumber, newColumn)
+          new monaco.Position(newLine, newColumn)
         );
       } else {
-        updateGhostText(null, position);
+        clearGhostText();
       }
 
       return true;
     },
-    [editor, pendingSuggestion, updateGhostText]
+    [editor, pendingSuggestion, updateGhostText, clearGhostText]
   );
 
-  // ── Main effect: wire up editor events ──
   useEffect(() => {
     if (!editor || !aiConfig.enabled || !enabled) {
       return;
     }
 
-    // On content change: cancel pending, debounce auto-trigger
     const contentDisposable = editor.onDidChangeModelContent(() => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
 
+      requestIdRef.current += 1;
       completionEngine.cancelCurrentRequest();
-
-      const position = editor.getPosition();
-      if (position) {
-        updateGhostText(null, position);
+      if (useAIStore.getState().pendingSuggestion) {
+        completionEngine.rejectSuggestion();
       }
+      clearGhostText();
 
       if (!aiConfig.completion.autoTrigger) {
         return;
@@ -285,17 +353,21 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
       }, aiConfig.completion.triggerDelay);
     });
 
-    // On cursor position change: dismiss if moved to a different line
     const cursorDisposable = editor.onDidChangeCursorPosition((event) => {
+      const anchor = anchorPositionRef.current;
       if (
-        lastTriggerPositionRef.current &&
-        event.position.lineNumber !== lastTriggerPositionRef.current.lineNumber
+        anchor
+        && (
+          event.position.lineNumber !== anchor.lineNumber
+          || event.position.column !== anchor.column
+        )
       ) {
+        requestIdRef.current += 1;
+        completionEngine.cancelCurrentRequest();
         rejectSuggestion();
       }
     });
 
-    // Priority shortcut handling — accept/reject works even when Monaco bindings conflict
     const keydownDisposable = editor.onKeyDown((event) => {
       const hasSuggestion = !!useAIStore.getState().pendingSuggestion;
       if (!hasSuggestion) {
@@ -316,7 +388,6 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
       }
     });
 
-    // Editor actions for command palette / programmatic invocation
     const acceptAction = editor.addAction({
       id: 'ai.acceptSuggestion',
       label: 'Accept AI Suggestion',
@@ -375,7 +446,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
         clearTimeout(debounceTimerRef.current);
       }
 
-      decorationsRef.current = editor.deltaDecorations(decorationsRef.current, []);
+      clearGhostText();
     };
   }, [
     editor,
@@ -389,22 +460,37 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     acceptSuggestion,
     rejectSuggestion,
     acceptPartialSuggestion,
-    updateGhostText,
+    clearGhostText,
   ]);
 
-  // ── Sync ghost text with pendingSuggestion store changes ──
   useEffect(() => {
     if (!editor) {
       return;
     }
 
-    const position = editor.getPosition();
-    if (position && pendingSuggestion) {
-      updateGhostText(pendingSuggestion.displayText || pendingSuggestion.text, position);
-    } else if (position && !pendingSuggestion) {
-      updateGhostText(null, position);
+    if (pendingSuggestion) {
+      const anchor = anchorPositionRef.current;
+      const currentPosition = editor.getPosition();
+      if (
+        !anchor
+        || !currentPosition
+        || currentPosition.lineNumber !== anchor.lineNumber
+        || currentPosition.column !== anchor.column
+      ) {
+        completionEngine.rejectSuggestion();
+        clearGhostText();
+        return;
+      }
+
+      updateGhostText(
+        pendingSuggestion.displayText || pendingSuggestion.text,
+        new monaco.Position(anchor.lineNumber, anchor.column)
+      );
+      return;
     }
-  }, [editor, pendingSuggestion, updateGhostText]);
+
+    clearGhostText();
+  }, [editor, pendingSuggestion, updateGhostText, clearGhostText]);
 
   return {
     triggerCompletion,

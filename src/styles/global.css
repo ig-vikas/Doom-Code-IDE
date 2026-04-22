@@ -820,6 +820,16 @@ input::placeholder, textarea::placeholder {
 /* --- File Explorer --- */
 .file-tree {
   font-size: 1rem;
+  position: relative;
+  outline: none;
+}
+
+.file-tree:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--accent-primary);
+}
+
+.file-tree-items {
+  min-height: 100%;
 }
 
 .file-tree-item {
@@ -846,8 +856,12 @@ input::placeholder, textarea::placeholder {
 }
 
 .file-tree-item.active {
-  background: var(--accent-glow);
+  background: color-mix(in srgb, var(--accent-primary) 26%, var(--bg-active));
   color: var(--text-primary);
+}
+
+.file-tree-item.selected.active {
+  box-shadow: inset 2px 0 0 var(--accent-primary);
 }
 
 .file-tree-arrow {
@@ -891,6 +905,22 @@ input::placeholder, textarea::placeholder {
   font-size: 1rem;
   min-width: 0;
   flex: 1;
+}
+
+.file-tree-selection-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  margin-left: 6px;
+  background: color-mix(in srgb, var(--accent-primary) 24%, transparent);
+  color: var(--text-primary);
+  font-size: 0.7692rem;
+  font-weight: 700;
+  flex-shrink: 0;
 }
 
 .file-tree-children {
@@ -961,6 +991,45 @@ input::placeholder, textarea::placeholder {
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   outline: none;
+}
+
+.explorer-context-menu {
+  min-width: 240px;
+  z-index: 1800;
+}
+
+.explorer-menu-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.explorer-menu-icon {
+  width: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.explorer-menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.explorer-menu-item:disabled:hover {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.explorer-menu-item.danger:not(:disabled) {
+  color: #ffb4b4;
+}
+
+.explorer-menu-item.danger:not(:disabled):hover {
+  background: #7f1d1d;
+  color: white;
 }
 
 /* --- Tabs --- */
@@ -2967,14 +3036,26 @@ input::placeholder, textarea::placeholder {
 .monaco-editor .view-line .ai-ghost-text,
 .monaco-editor .view-line .ai-ghost-text-multiline {
   color: #6a737d !important;
-  opacity: 0.6 !important;
+  opacity: var(--ai-ghost-opacity, 0.6) !important;
   font-style: normal !important;
   font-weight: normal !important;
+  white-space: pre !important;
   pointer-events: none !important;
 }
 
+.monaco-editor .ai-ghost-text-widget,
 .monaco-editor .ai-ghost-text-multiline {
+  color: #6a737d !important;
+  opacity: var(--ai-ghost-opacity, 0.6) !important;
+  font-style: normal !important;
+  font-weight: normal !important;
   white-space: pre !important;
+  pointer-events: none !important;
+}
+
+.monaco-editor .contentWidgets .ai-ghost-text-widget {
+  z-index: 1400 !important;
+  overflow: visible !important;
 }
 
 @keyframes ghostTextFadeIn {

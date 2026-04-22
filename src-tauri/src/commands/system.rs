@@ -1,6 +1,7 @@
 use crate::utils::format_timestamp;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::process::Stdio;
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -9,13 +10,23 @@ pub struct ShellOutput {
     pub stderr: String,
     pub exit_code: Option<i32>,
     pub success: bool,
+    pub terminated_by_output_limit: bool,
 }
 
 #[tauri::command]
-pub async fn run_shell_command(command: String, cwd: Option<String>) -> Result<ShellOutput, String> {
+pub async fn run_shell_command(
+    command: String,
+    cwd: Option<String>,
+    state: tauri::State<'_, crate::state::AppState>,
+) -> Result<ShellOutput, String> {
+    let app_state = state.inner().clone();
+
     tauri::async_runtime::spawn_blocking(move || {
         let mut cmd = std::process::Command::new("cmd");
-        cmd.args(["/C", &command]);
+        cmd.args(["/C", &command])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
         if let Some(dir) = &cwd {
             cmd.current_dir(dir);
@@ -27,15 +38,53 @@ pub async fn run_shell_command(command: String, cwd: Option<String>) -> Result<S
             cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
 
-        let output = cmd
-            .output()
+        let child = cmd
+            .spawn()
             .map_err(|e| format!("Failed to run command: {}", e))?;
+        let pid = child.id();
+
+        super::process::set_running_process(
+            &app_state,
+            crate::state::RunningProcess {
+                pid,
+                cleanup_path: None,
+            },
+        )?;
+
+        let captured_result = super::process::collect_child_output(
+            child,
+            None,
+            super::process::OUTPUT_CAPTURE_LIMIT_BYTES,
+        );
+        let _ = super::process::clear_running_process(&app_state, pid);
+        let captured = captured_result?;
+
+        let stdout = String::from_utf8_lossy(&captured.stdout).into_owned();
+        let stderr = String::from_utf8_lossy(&captured.stderr).into_owned();
+        let terminated_by_output_limit = captured.output_limit_exceeded;
+        let success = captured.status.success() && !terminated_by_output_limit;
 
         Ok(ShellOutput {
-            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-            exit_code: output.status.code(),
-            success: output.status.success(),
+            stdout,
+            stderr: if terminated_by_output_limit {
+                if stderr.trim().is_empty() {
+                    format!(
+                        "Output Limit Exceeded (>{})",
+                        super::process::OUTPUT_CAPTURE_LIMIT_LABEL
+                    )
+                } else {
+                    format!(
+                        "{}\nOutput Limit Exceeded (>{})",
+                        stderr,
+                        super::process::OUTPUT_CAPTURE_LIMIT_LABEL
+                    )
+                }
+            } else {
+                stderr
+            },
+            exit_code: captured.status.code(),
+            success,
+            terminated_by_output_limit,
         })
     })
     .await

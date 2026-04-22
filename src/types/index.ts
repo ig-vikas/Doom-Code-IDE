@@ -22,6 +22,7 @@ export type {
   AIUISettings,
   CompletionRequest,
   CompletionPrompt,
+  CompletionContextFile,
   ChatMessage,
   CompletionResponse,
   Completion,

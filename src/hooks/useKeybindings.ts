@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useKeybindingStore } from '../stores/keybindingStore';
 import { useAIStore } from '../stores/aiStore';
+import { useBuildStore } from '../stores/buildStore';
 import { executeCommand, hasCommand } from '../services/commandService';
 
 interface ParsedKeybinding {
@@ -132,6 +133,15 @@ const MONACO_INPUT_COMMANDS = new Set([
 function isCtrlEnter(e: KeyboardEvent): boolean {
   const eventKey = normalizeKeyToken(e.key.toLowerCase());
   return (eventKey === 'enter' || e.code === 'NumpadEnter') && (e.ctrlKey || e.metaKey) && !e.altKey;
+}
+
+function shouldPrioritizeImmediateCommand(command: string): boolean {
+  if (command !== 'build.killProcess') {
+    return false;
+  }
+
+  const buildState = useBuildStore.getState();
+  return buildState.running || buildState.compiling;
 }
 
 export function useGlobalKeybindings() {
@@ -285,6 +295,14 @@ export function useGlobalKeybindings() {
 
       const immediate = allowedMatches.find((binding) => binding.sequence.length === 1);
       const chordMatches = allowedMatches.filter((binding) => binding.sequence.length > 1);
+
+      if (immediate && shouldPrioritizeImmediateCommand(immediate.command)) {
+        e.preventDefault();
+        e.stopPropagation();
+        clearPending();
+        runCommand(immediate.command);
+        return;
+      }
 
       if (chordMatches.length > 0) {
         e.preventDefault();

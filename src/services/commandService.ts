@@ -120,6 +120,23 @@ int main() {
 }
 `;
 
+const OUTPUT_CAPTURE_LIMIT_LABEL = '4 MB';
+
+function emitKilledByOutputLimit(contextLabel: string) {
+  emitTerminalOutput(
+    `\x1b[31m✗ ${contextLabel} stopped — output exceeded ${OUTPUT_CAPTURE_LIMIT_LABEL} and the process was auto-killed\x1b[0m\r\n`
+  );
+}
+
+function emitManualKillNotice() {
+  emitTerminalOutput('\x1b[33mProcess killed.\x1b[0m\r\n');
+}
+
+async function persistProgramOutput(outputPath: string, stdout: string) {
+  await writeFileContent(outputPath, stdout);
+  await refreshOpenFiles([outputPath]);
+}
+
 export function initializeCommands() {
   // ======================== FILE ========================
   registerCommand('file.newFile', () => {
@@ -520,13 +537,19 @@ export function initializeCommands() {
   });
 
   registerCommand('build.killProcess', async () => {
+    const buildState = useBuildStore.getState();
+    const hadActiveProcess = buildState.running || buildState.compiling;
+
     try {
       useBuildStore.getState().setKilled(true);
       await killRunningProcess();
       useBuildStore.getState().setRunning(false);
       useBuildStore.getState().setCompiling(false);
       useBuildStore.getState().setBuildVisualState('idle');
-      useNotificationStore.getState().info('Process killed');
+      if (hadActiveProcess) {
+        emitManualKillNotice();
+        useNotificationStore.getState().info('Process killed');
+      }
     } catch {}
   });
 
@@ -670,6 +693,12 @@ async function doBuildAndRun(autoRun: boolean) {
 
   try {
     const compileResult = await compileCpp(sourcePath, exePath, profile.flags, compiler);
+    if (useBuildStore.getState().killed) {
+      useBuildStore.getState().setCompiling(false);
+      useBuildStore.getState().setBuildVisualState('idle');
+      emitTerminalOutput('\r\n');
+      return;
+    }
     const diagnostics = countDiagnostics(compileResult.stderr);
     useBuildStore.getState().setDiagnostics(
       diagnostics.warnings,
@@ -688,6 +717,11 @@ async function doBuildAndRun(autoRun: boolean) {
     emitTerminalOutput(`\x1b[32m✓ Compiled successfully${compileSuffix}\x1b[0m\r\n`);
   } catch (err) {
     useBuildStore.getState().setCompiling(false);
+    if (useBuildStore.getState().killed) {
+      useBuildStore.getState().setBuildVisualState('idle');
+      emitTerminalOutput('\r\n');
+      return;
+    }
     useBuildStore.getState().setDiagnostics(0, 1);
     useBuildStore.getState().pulseBuildVisualState('failure');
     notify.error('Compile failed: ' + String(err));
@@ -735,6 +769,8 @@ async function doBuildAndRun(autoRun: boolean) {
         let verdict: 'accepted' | 'wrong-answer' | 'time-limit-exceeded' | 'runtime-error';
         if (result.timedOut) {
           verdict = 'time-limit-exceeded';
+        } else if (result.terminatedByOutputLimit) {
+          verdict = 'runtime-error';
         } else if (result.exitCode !== 0) {
           verdict = 'runtime-error';
         } else if (expected && actual !== expected) {
@@ -745,9 +781,20 @@ async function doBuildAndRun(autoRun: boolean) {
 
         useBuildStore.getState().setTestVerdict(tc.id, verdict, result.stdout, elapsed);
 
-        const color = verdict === 'accepted' ? '32' : verdict === 'wrong-answer' ? '31' : verdict === 'time-limit-exceeded' ? '33' : '35';
+        const color = result.terminatedByOutputLimit
+          ? '31'
+          : verdict === 'accepted'
+            ? '32'
+            : verdict === 'wrong-answer'
+              ? '31'
+              : verdict === 'time-limit-exceeded'
+                ? '33'
+                : '35';
         const elapsedSuffix = buildSettings.showExecutionTime ? ` (${elapsed}ms)` : '';
-        emitTerminalOutput(`\x1b[${color}m  ${tc.name}: ${verdict.toUpperCase()}${elapsedSuffix}\x1b[0m\r\n`);
+        const verdictLabel = result.terminatedByOutputLimit
+          ? `OUTPUT LIMIT (${OUTPUT_CAPTURE_LIMIT_LABEL})`
+          : verdict.toUpperCase();
+        emitTerminalOutput(`\x1b[${color}m  ${tc.name}: ${verdictLabel}${elapsedSuffix}\x1b[0m\r\n`);
       } catch (err) {
         if (useBuildStore.getState().killed) break;
         useBuildStore.getState().setTestVerdict(tc.id, 'runtime-error', String(err));
@@ -787,6 +834,12 @@ async function doBuildAndRun(autoRun: boolean) {
       if (useBuildStore.getState().killed) {
         useBuildStore.getState().setBuildVisualState('idle');
         emitTerminalOutput('\r\n');
+      } else if (result.terminatedByOutputLimit) {
+        useBuildStore.getState().pulseBuildVisualState('failure');
+        notify.error(`Command stopped — output exceeded ${OUTPUT_CAPTURE_LIMIT_LABEL}`);
+        emitKilledByOutputLimit('Command');
+        if (result.stderr) emitTerminalOutput(result.stderr.replace(/\n/g, '\r\n'));
+        if (result.stdout) emitTerminalOutput(result.stdout.replace(/\n/g, '\r\n'));
       } else if (result.success) {
         useBuildStore.getState().pulseBuildVisualState('success');
         notify.success('Custom command completed');
@@ -815,28 +868,49 @@ async function doBuildAndRun(autoRun: boolean) {
   } else {
     // File mode (Doom): run with input.txt > output.txt
     const runCmd = `${baseName}.exe < input.txt > output.txt`;
+    const inputPath = `${fileDir}\\input.txt`;
+    const outputPath = `${fileDir}\\output.txt`;
     emitTerminalOutput(`\x1b[2m$ ${runCmd}\x1b[0m\r\n`);
 
+    let inputContent = '';
     try {
-      const result = await runShellCommand(runCmd, fileDir);
+      inputContent = await readFileContent(inputPath);
+    } catch {
       useBuildStore.getState().setRunning(false);
+      useBuildStore.getState().pulseBuildVisualState('failure');
+      notify.error('Run failed — input.txt not found');
+      emitTerminalOutput(`\x1b[31mError: input.txt not found\x1b[0m\r\n\r\n`);
+      return;
+    }
+
+    try {
+      const result = await runExecutable(exePath, inputContent, profile.timeLimit);
+      useBuildStore.getState().setRunning(false);
+      await persistProgramOutput(outputPath, result.stdout);
 
       if (useBuildStore.getState().killed) {
         useBuildStore.getState().setBuildVisualState('idle');
         emitTerminalOutput('\r\n');
-      } else if (result.success) {
+      } else if (result.terminatedByOutputLimit) {
+        useBuildStore.getState().pulseBuildVisualState('failure');
+        notify.error(`Run stopped — output exceeded ${OUTPUT_CAPTURE_LIMIT_LABEL}`);
+        emitKilledByOutputLimit('Run');
+        emitTerminalOutput(`\x1b[33mPartial output was written to output.txt.\x1b[0m\r\n`);
+        if (result.stderr) emitTerminalOutput(result.stderr.replace(/\n/g, '\r\n'));
+      } else if (result.timedOut) {
+        useBuildStore.getState().pulseBuildVisualState('failure');
+        notify.error('Run stopped — time limit exceeded');
+        emitTerminalOutput(`\x1b[31m✗ Run stopped — time limit exceeded\x1b[0m\r\n`);
+        if (result.stderr) emitTerminalOutput(result.stderr.replace(/\n/g, '\r\n'));
+      } else if (result.exitCode === 0) {
         useBuildStore.getState().pulseBuildVisualState('success');
         notify.success('Run completed — output written to output.txt');
         emitTerminalOutput(`\x1b[32m✓ Run completed — see output.txt\x1b[0m\r\n`);
-
-        // Refresh all open files — picks up output.txt and any other externally changed files
-        await refreshOpenFiles([`${fileDir}\\output.txt`]);
       } else {
         useBuildStore.getState().pulseBuildVisualState('failure');
         notify.error('Run failed');
         emitTerminalOutput(`\x1b[31m✗ Run failed\x1b[0m\r\n`);
         if (result.stderr) emitTerminalOutput(result.stderr.replace(/\n/g, '\r\n'));
-        if (result.stdout) emitTerminalOutput(result.stdout.replace(/\n/g, '\r\n'));
       }
       emitTerminalOutput('\r\n');
     } catch (err) {
@@ -917,6 +991,12 @@ async function doBuildAndRunSingleTest(index: number) {
 
   try {
     const compileResult = await compileCpp(sourcePath, exePath, profile.flags, compiler);
+    if (useBuildStore.getState().killed) {
+      useBuildStore.getState().setCompiling(false);
+      useBuildStore.getState().setBuildVisualState('idle');
+      emitTerminalOutput('\r\n');
+      return;
+    }
     const diagnostics = countDiagnostics(compileResult.stderr);
     useBuildStore.getState().setDiagnostics(
       diagnostics.warnings,
@@ -932,6 +1012,11 @@ async function doBuildAndRunSingleTest(index: number) {
     }
   } catch (err) {
     useBuildStore.getState().setCompiling(false);
+    if (useBuildStore.getState().killed) {
+      useBuildStore.getState().setBuildVisualState('idle');
+      emitTerminalOutput('\r\n');
+      return;
+    }
     useBuildStore.getState().setDiagnostics(0, 1);
     useBuildStore.getState().pulseBuildVisualState('failure');
     notify.error('Compile failed: ' + String(err));
@@ -947,6 +1032,7 @@ async function doBuildAndRunSingleTest(index: number) {
 
       let verdict: 'accepted' | 'wrong-answer' | 'time-limit-exceeded' | 'runtime-error';
       if (result.timedOut) verdict = 'time-limit-exceeded';
+      else if (result.terminatedByOutputLimit) verdict = 'runtime-error';
       else if (result.exitCode !== 0) verdict = 'runtime-error';
       else if (expected && actual !== expected) verdict = 'wrong-answer';
       else verdict = 'accepted';
@@ -957,9 +1043,20 @@ async function doBuildAndRunSingleTest(index: number) {
       } else {
         useBuildStore.getState().pulseBuildVisualState('failure');
       }
-      const color = verdict === 'accepted' ? '32' : verdict === 'wrong-answer' ? '31' : verdict === 'time-limit-exceeded' ? '33' : '35';
+      const color = result.terminatedByOutputLimit
+        ? '31'
+        : verdict === 'accepted'
+          ? '32'
+          : verdict === 'wrong-answer'
+            ? '31'
+            : verdict === 'time-limit-exceeded'
+              ? '33'
+              : '35';
       const elapsedSuffix = buildSettings.showExecutionTime ? ` (${result.durationMs}ms)` : '';
-      emitTerminalOutput(`\x1b[${color}m  ${tc.name}: ${verdict.toUpperCase()}${elapsedSuffix}\x1b[0m\r\n\r\n`);
+      const verdictLabel = result.terminatedByOutputLimit
+        ? `OUTPUT LIMIT (${OUTPUT_CAPTURE_LIMIT_LABEL})`
+        : verdict.toUpperCase();
+      emitTerminalOutput(`\x1b[${color}m  ${tc.name}: ${verdictLabel}${elapsedSuffix}\x1b[0m\r\n\r\n`);
     }
   } catch (err) {
     if (!useBuildStore.getState().killed) {

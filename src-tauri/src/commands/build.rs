@@ -1,7 +1,6 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::process::{Command, Stdio};
-use std::sync::mpsc;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
@@ -34,6 +33,7 @@ pub struct RunResult {
     pub exit_code: Option<i32>,
     pub duration_ms: u64,
     pub timed_out: bool,
+    pub terminated_by_output_limit: bool,
 }
 
 fn parse_compile_errors(stderr: &str) -> Vec<CompileError> {
@@ -81,11 +81,13 @@ pub async fn compile_cpp(
     // Kill only the known previously-started process, then attempt to delete stale executable.
     if let Some(running) = super::process::take_running_process(&state)? {
         super::process::terminate_and_wait(running.pid, Duration::from_millis(1200));
-        super::process::try_remove_file_with_backoff(
-            &running.exec_path,
-            18,
-            Duration::from_millis(35),
-        );
+        if let Some(cleanup_path) = running.cleanup_path.as_deref() {
+            super::process::try_remove_file_with_backoff(
+                cleanup_path,
+                18,
+                Duration::from_millis(35),
+            );
+        }
     }
     super::process::try_remove_file_with_backoff(
         &output_path,
@@ -95,6 +97,7 @@ pub async fn compile_cpp(
 
     let compiler = compiler_name_or_default(compiler_path);
     let total_started = Instant::now();
+    let app_state = state.inner().clone();
 
     let compile_result = tauri::async_runtime::spawn_blocking(move || {
         let started = Instant::now();
@@ -102,7 +105,9 @@ pub async fn compile_cpp(
         cmd.args(&flags)
             .arg(&source_path)
             .arg("-o")
-            .arg(&output_path);
+            .arg(&output_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
         #[cfg(windows)]
         {
@@ -110,12 +115,25 @@ pub async fn compile_cpp(
             cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
 
-        let output = cmd.output().map_err(|e| {
+        let child = cmd.spawn().map_err(|e| {
             format!(
                 "Failed to execute compiler '{}': {}. Make sure it exists and is in PATH.",
                 compiler, e
             )
         })?;
+        let pid = child.id();
+
+        super::process::set_running_process(
+            &app_state,
+            crate::state::RunningProcess {
+                pid,
+                cleanup_path: Some(output_path.clone()),
+            },
+        )?;
+
+        let wait_result = child.wait_with_output();
+        let _ = super::process::clear_running_process(&app_state, pid);
+        let output = wait_result.map_err(|e| format!("Compiler process error: {}", e))?;
 
         let duration_ms = started.elapsed().as_millis() as u64;
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -182,7 +200,7 @@ pub async fn run_executable(
         &state,
         crate::state::RunningProcess {
             pid,
-            exec_path: exec_path.clone(),
+            cleanup_path: Some(exec_path.clone()),
         },
     )?;
 
@@ -190,39 +208,42 @@ pub async fn run_executable(
         let _ = stdin_pipe.write_all(stdin.as_bytes());
     }
 
-    let (tx, rx) = mpsc::channel();
-    std::thread::spawn(move || {
-        let _ = tx.send(child.wait_with_output());
+    let captured_result = super::process::collect_child_output(
+        child,
+        Some(std::time::Duration::from_millis(timeout_ms)),
+        super::process::OUTPUT_CAPTURE_LIMIT_BYTES,
+    );
+    let _ = super::process::clear_running_process(&state, pid);
+    let captured = captured_result?;
+
+    let stdout = String::from_utf8_lossy(&captured.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&captured.stderr).into_owned();
+    let result = Ok(RunResult {
+        stdout,
+        stderr: if captured.timed_out {
+            "Time Limit Exceeded".to_string()
+        } else if captured.output_limit_exceeded {
+            if stderr.trim().is_empty() {
+                format!(
+                    "Output Limit Exceeded (>{})",
+                    super::process::OUTPUT_CAPTURE_LIMIT_LABEL
+                )
+            } else {
+                format!(
+                    "{}\nOutput Limit Exceeded (>{})",
+                    stderr,
+                    super::process::OUTPUT_CAPTURE_LIMIT_LABEL
+                )
+            }
+        } else {
+            stderr
+        },
+        exit_code: captured.status.code(),
+        duration_ms: started.elapsed().as_millis() as u64,
+        timed_out: captured.timed_out,
+        terminated_by_output_limit: captured.output_limit_exceeded,
     });
 
-    let timeout = Duration::from_millis(timeout_ms);
-    let result = match rx.recv_timeout(timeout) {
-        Ok(wait_result) => match wait_result {
-            Ok(output) => Ok(RunResult {
-                stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-                exit_code: output.status.code(),
-                duration_ms: started.elapsed().as_millis() as u64,
-                timed_out: false,
-            }),
-            Err(e) => Err(format!("Process error: {}", e)),
-        },
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            super::process::terminate_and_wait(pid, Duration::from_millis(1200));
-            Ok(RunResult {
-                stdout: String::new(),
-                stderr: "Time Limit Exceeded".to_string(),
-                exit_code: None,
-                duration_ms: timeout_ms,
-                timed_out: true,
-            })
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            Err("Runner thread disconnected unexpectedly".to_string())
-        }
-    };
-
-    let _ = super::process::clear_running_process(&state, pid);
     maybe_log_duration("run_executable.total", started);
     result
 }

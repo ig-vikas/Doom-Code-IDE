@@ -8,6 +8,8 @@ interface FileExplorerState {
   treeSignature: string | null;
   expandedDirs: Set<string>;
   selectedPath: string | null;
+  selectedPaths: string[];
+  selectionAnchorPath: string | null;
   renamingPath: string | null;
   creatingIn: string | null;
   creatingType: 'file' | 'folder' | null;
@@ -21,6 +23,8 @@ interface FileExplorerState {
   collapseDir: (path: string) => void;
   collapseAll: () => void;
   setSelectedPath: (path: string | null) => void;
+  setSelection: (paths: string[], primaryPath?: string | null, anchorPath?: string | null) => void;
+  clearSelection: () => void;
   startRename: (path: string) => void;
   cancelRename: () => void;
   startCreate: (dirPath: string, type: 'file' | 'folder') => void;
@@ -38,12 +42,27 @@ export const useFileExplorerStore = create<FileExplorerState>((set, get) => ({
   treeSignature: null,
   expandedDirs: new Set<string>(),
   selectedPath: null,
+  selectedPaths: [],
+  selectionAnchorPath: null,
   renamingPath: null,
   creatingIn: null,
   creatingType: null,
   loading: false,
 
-  setRootPath: (path, name) => set({ rootPath: path, rootName: name, treeSignature: null }),
+  setRootPath: (path, name) =>
+    set({
+      rootPath: path,
+      rootName: name,
+      treeSignature: null,
+      tree: [],
+      expandedDirs: new Set<string>(),
+      selectedPath: null,
+      selectedPaths: [],
+      selectionAnchorPath: null,
+      renamingPath: null,
+      creatingIn: null,
+      creatingType: null,
+    }),
 
   setTree: (tree, signature) =>
     set((state) => ({
@@ -77,7 +96,37 @@ export const useFileExplorerStore = create<FileExplorerState>((set, get) => ({
 
   collapseAll: () => set({ expandedDirs: new Set() }),
 
-  setSelectedPath: (path) => set({ selectedPath: path }),
+  setSelectedPath: (path) =>
+    set({
+      selectedPath: path,
+      selectedPaths: path ? [path] : [],
+      selectionAnchorPath: path,
+    }),
+
+  setSelection: (paths, primaryPath, anchorPath) => {
+    const deduped = Array.from(new Set(paths));
+    const resolvedPrimaryPath =
+      primaryPath === undefined
+        ? deduped[deduped.length - 1] ?? null
+        : primaryPath;
+    const resolvedAnchorPath =
+      anchorPath === undefined
+        ? resolvedPrimaryPath
+        : anchorPath;
+
+    set({
+      selectedPath: resolvedPrimaryPath ?? null,
+      selectedPaths: deduped,
+      selectionAnchorPath: resolvedAnchorPath ?? resolvedPrimaryPath ?? null,
+    });
+  },
+
+  clearSelection: () =>
+    set({
+      selectedPath: null,
+      selectedPaths: [],
+      selectionAnchorPath: null,
+    }),
 
   startRename: (path) => set({ renamingPath: path }),
   cancelRename: () => set({ renamingPath: null }),

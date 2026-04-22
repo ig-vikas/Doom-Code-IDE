@@ -30,7 +30,7 @@ export class DeepSeekProvider extends BaseAIProvider {
   async complete(request: CompletionRequest): Promise<CompletionResponse> {
     const startTime = Date.now();
 
-    if (this.useFIM && request.prompt.suffix && request.prompt.suffix.trim()) {
+    if (!request.prompt.forceStructuredPrompt && this.useFIM && request.prompt.suffix && request.prompt.suffix.trim()) {
       return this.completeFIM(request, startTime);
     }
 
