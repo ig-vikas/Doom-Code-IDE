@@ -119,15 +119,7 @@ export default function StatusBar() {
             <span>AI Debug</span>
           </button>
         </div>
-        <div className="solve-counter">
-          <button type="button" className="solve-counter-btn" onClick={decrement} title="Undo solve">
-            <VscRemove />
-          </button>
-          <span className="solve-counter-value" title="Questions solved today">{todayCount}</span>
-          <button type="button" className="solve-counter-btn plus" onClick={increment} title="Mark solved">
-            <VscAdd />
-          </button>
-        </div>
+
         <div className="statusbar-right">
           <div className={`statusbar-item status-save ${saveIndicatorState !== 'idle' ? 'visible' : ''}`}>
             <span className={`status-save-spinner ${saveIndicatorState === 'saving' ? 'active' : ''}`} />

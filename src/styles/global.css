@@ -53,7 +53,7 @@
   --transition-fast: 120ms ease;
   --transition-normal: 200ms ease;
   --transition-slow: 300ms ease;
-  --titlebar-height: 0px;
+  --titlebar-height: 35px;
   --menubar-height: 30px;
   --statusbar-height: 24px;
   --tab-height: 36px;
@@ -483,35 +483,47 @@ input::placeholder, textarea::placeholder {
   80% { transform: translateX(2px) scaleX(1); }
 }
 
-/* --- App Drag Region (replaces old titlebar drag) --- */
-.app-drag-region {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 140px;
-  height: 6px;
+/* --- App Titlebar --- */
+.app-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--titlebar-height);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  user-select: none;
+  flex-shrink: 0;
   -webkit-app-region: drag;
   z-index: 9998;
-  pointer-events: auto;
+}
+
+.app-titlebar-left {
+  width: 120px;
+  height: 100%;
+}
+
+.app-titlebar-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: 100%;
+}
+
+.app-titlebar-right {
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+  height: 100%;
 }
 
 /* --- Floating Window Controls (top-right) --- */
 .floating-window-controls {
-  position: fixed;
-  top: 0;
-  right: 0;
   display: flex;
   align-items: center;
   z-index: 9999;
   -webkit-app-region: no-drag;
   pointer-events: auto;
-  background: linear-gradient(180deg, var(--bg-deepest) 0%, transparent 100%);
-  border-bottom-left-radius: var(--radius-md);
-  opacity: 0.7;
-  transition: opacity 200ms ease;
-}
-
-.floating-window-controls:hover {
   opacity: 1;
 }
 
@@ -530,6 +542,20 @@ input::placeholder, textarea::placeholder {
   padding: 0;
   -webkit-app-region: no-drag;
   pointer-events: auto;
+}
+
+.titlebar-btn.ai-toggle {
+  width: auto;
+  padding: 0 12px;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.titlebar-btn.ai-toggle:hover {
+  background: var(--bg-highlight);
+}
+
+.titlebar-btn.ai-toggle.active {
+  background: var(--bg-highlight);
 }
 
 .titlebar-btn:hover {
