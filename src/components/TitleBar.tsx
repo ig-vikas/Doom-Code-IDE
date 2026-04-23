@@ -3,6 +3,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { VscChromeMinimize, VscChromeMaximize, VscChromeRestore, VscChromeClose, VscAdd, VscRemove } from 'react-icons/vsc';
 import { useSolveCounterStore } from '../stores/solveCounterStore';
 import AIStatusBar from './ai/AIStatusBar';
+import RadialDoomMenu from './RadialDoomMenu';
 
 export default function TitleBar() {
   const [maximized, setMaximized] = useState(false);
@@ -42,7 +43,11 @@ export default function TitleBar() {
   return (
     <div className="app-titlebar" data-tauri-drag-region="">
       {/* Spacer for the Radial Doom Icon on the left */}
-      <div className="app-titlebar-left" data-tauri-drag-region=""></div>
+      <div className="app-titlebar-left" data-tauri-drag-region="">
+        <div className="app-titlebar-logo">
+          <RadialDoomMenu />
+        </div>
+      </div>
 
       {/* Center: Problem Counter */}
       <div className="app-titlebar-center" data-tauri-drag-region="">

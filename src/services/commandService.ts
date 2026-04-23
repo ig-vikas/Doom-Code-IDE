@@ -576,7 +576,18 @@ export function initializeCommands() {
 
   // ======================== SETTINGS ========================
   registerCommand('settings.openSettings', () => {
-    useUIStore.getState().setSettingsOpen(true);
+    const ui = useUIStore.getState();
+    if (ui.settingsOpen) {
+      executeCommand('settings.closeSettings');
+      return;
+    }
+
+    ui.setSettingsOpen(true);
+  });
+
+  registerCommand('settings.closeSettings', () => {
+    useUIStore.getState().setSettingsOpen(false);
+    saveConfigIfChanged('settings.json', useSettingsStore.getState().settings).catch(() => {});
   });
 
   registerCommand('help.openDocs', () => {

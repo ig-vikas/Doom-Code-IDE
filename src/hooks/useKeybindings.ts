@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useKeybindingStore } from '../stores/keybindingStore';
 import { useAIStore } from '../stores/aiStore';
 import { useBuildStore } from '../stores/buildStore';
+import { useUIStore } from '../stores/uiStore';
 import { executeCommand, hasCommand } from '../services/commandService';
 
 interface ParsedKeybinding {
@@ -210,6 +211,13 @@ export function useGlobalKeybindings() {
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.isComposing) {
+        return;
+      }
+
+      if (normalizeKeyToken(e.key.toLowerCase()) === 'escape' && useUIStore.getState().settingsOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        executeCommand('settings.closeSettings');
         return;
       }
 

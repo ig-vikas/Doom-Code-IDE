@@ -7,7 +7,6 @@ import {
   VscSymbolSnippet,
   VscSettingsGear,
 } from 'react-icons/vsc';
-import RadialDoomMenu from './RadialDoomMenu';
 
 const activityItems: { id: SidebarView; icon: JSX.Element; tooltip: string }[] = [
   { id: 'explorer', icon: <VscFiles />, tooltip: 'Explorer' },
@@ -41,11 +40,6 @@ export default function ActivityBar() {
 
   return (
     <div className="activity-bar">
-      {/* Doom Icon + Radial Menu at top */}
-      <div className="activity-bar-logo">
-        <RadialDoomMenu />
-      </div>
-
       {/* Explorer, Search, Snippets — centered vertically */}
       <div className="activity-bar-center">
         <div
