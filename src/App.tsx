@@ -419,7 +419,7 @@ export default function App() {
       <div className="app-container">
         <BuildProgressBar />
         <TitleBar />
-        <div className="app-main">
+        <div className="app-main no-titlebar">
           {activityBarVisible ? <ActivityBar /> : null}
           <div className={`app-sidebar-shell ${sidebarVisible ? 'open' : 'closed'}`} style={sidebarShellStyle}>
             <Sidebar style={{ width: sidebarWidth }} />

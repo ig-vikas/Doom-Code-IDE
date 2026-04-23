@@ -53,7 +53,7 @@
   --transition-fast: 120ms ease;
   --transition-normal: 200ms ease;
   --transition-slow: 300ms ease;
-  --titlebar-height: 34px;
+  --titlebar-height: 0px;
   --menubar-height: 30px;
   --statusbar-height: 24px;
   --tab-height: 36px;
@@ -483,124 +483,46 @@ input::placeholder, textarea::placeholder {
   80% { transform: translateX(2px) scaleX(1); }
 }
 
-.titlebar {
-  display: flex;
-  align-items: center;
-  height: var(--titlebar-height);
-  background: var(--bg-deepest);
-  border-bottom: 1px solid var(--border-subtle);
-  user-select: none;
-  -webkit-app-region: no-drag;
-  position: relative;
-  z-index: 2;
-  box-sizing: border-box;
-  padding: 0 168px 0 4px;
-  gap: 4px;
-}
-
-.titlebar-drag-region {
-  position: absolute;
-  inset: 0;
-  -webkit-app-region: drag;
-  z-index: 1;
-}
-
-.titlebar-logo {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  -webkit-app-region: no-drag;
-  position: relative;
-  z-index: 2;
-  font-weight: 700;
-  font-size: 1.0769rem;
-  color: var(--accent-primary);
-  font-family: var(--font-serif);
-  letter-spacing: 0.5px;
-}
-
-.titlebar-logo svg {
-  width: 16px;
-  height: 16px;
-}
-
-.titlebar-icon {
-  width: 18px;
-  height: 18px;
-  object-fit: contain;
-}
-
-.titlebar-menus {
-  display: flex;
-  align-items: center;
-  -webkit-app-region: no-drag;
-  position: relative;
-  z-index: 2;
-}
-
-.titlebar-menu-item {
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  font-size: 0.9615rem;
-  color: var(--text-secondary);
-  position: relative;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.titlebar-menu-item:hover {
-  background: var(--bg-highlight);
-  color: var(--text-primary);
-}
-
-.titlebar-center {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-size: 0.9231rem;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  pointer-events: none;
-  -webkit-app-region: no-drag;
-  position: relative;
-  z-index: 2;
-}
-
-.titlebar-ai-slot {
-  display: flex;
-  align-items: center;
-  -webkit-app-region: no-drag;
-  position: relative;
-  z-index: 2;
-  flex-shrink: 0;
-}
-
-
-.titlebar-controls {
-  display: flex;
-  align-items: center;
-  -webkit-app-region: no-drag;
-  gap: 0;
-  margin-left: 0;
-  margin-right: 0;
-  height: 100%;
-  position: absolute;
+/* --- App Drag Region (replaces old titlebar drag) --- */
+.app-drag-region {
+  position: fixed;
   top: 0;
-  right: -6px;
-  z-index: 20;
+  left: 0;
+  right: 140px;
+  height: 6px;
+  -webkit-app-region: drag;
+  z-index: 9998;
+  pointer-events: auto;
+}
+
+/* --- Floating Window Controls (top-right) --- */
+.floating-window-controls {
+  position: fixed;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  z-index: 9999;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+  background: linear-gradient(180deg, var(--bg-deepest) 0%, transparent 100%);
+  border-bottom-left-radius: var(--radius-md);
+  opacity: 0.7;
+  transition: opacity 200ms ease;
+}
+
+.floating-window-controls:hover {
+  opacity: 1;
 }
 
 .titlebar-btn {
-  width: 48px;
-  height: var(--titlebar-height);
+  width: 46px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
-  transition: background var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
   flex-shrink: 0;
   cursor: pointer;
   border: none;
@@ -612,6 +534,7 @@ input::placeholder, textarea::placeholder {
 
 .titlebar-btn:hover {
   background: var(--bg-highlight);
+  color: var(--text-primary);
 }
 
 .titlebar-btn.close:hover {
@@ -620,7 +543,9 @@ input::placeholder, textarea::placeholder {
 }
 
 .titlebar-btn.close {
-  width: 72px;
+  width: 52px;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 .titlebar-btn svg {
@@ -687,14 +612,24 @@ input::placeholder, textarea::placeholder {
   width: var(--activity-bar-width);
   background: var(--bg-deepest);
   border-right: 1px solid var(--border-subtle);
-  padding: 4px 0;
-  gap: 2px;
+  padding: 0;
+  gap: 0;
 }
 
-.activity-bar-top {
+.activity-bar-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 8px 0 4px;
+  flex-shrink: 0;
+}
+
+.activity-bar-center {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 2px;
   flex: 1;
   position: relative;
@@ -705,6 +640,7 @@ input::placeholder, textarea::placeholder {
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  padding-bottom: 8px;
 }
 
 .activity-btn {
@@ -732,6 +668,7 @@ input::placeholder, textarea::placeholder {
 
 .activity-indicator {
   position: absolute;
+  top: 0;
   left: 0;
   width: 2px;
   border-radius: 0 2px 2px 0;
@@ -740,10 +677,119 @@ input::placeholder, textarea::placeholder {
   transform: translateY(0);
   transition: transform 200ms ease-in-out, opacity 200ms ease-in-out;
   will-change: transform;
+  z-index: 10;
 }
 
 .activity-indicator.visible {
   opacity: 1;
+}
+
+/* ======================== RADIAL DOOM MENU ======================== */
+.radial-doom-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+/* --- Trigger (Doom Icon) --- */
+.radial-doom-trigger {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 50%;
+  position: relative;
+  transition: transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 250ms ease;
+  z-index: 10001;
+}
+
+.radial-doom-trigger:hover,
+.radial-doom-trigger.active {
+  transform: scale(1.5);
+}
+
+.radial-doom-trigger.active {
+  box-shadow: 0 0 20px 6px var(--accent-glow);
+}
+
+.radial-doom-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  border-radius: 50%;
+  transition: filter 200ms ease;
+  position: relative;
+  z-index: 2;
+}
+
+.radial-doom-trigger.active .radial-doom-icon {
+  filter: brightness(1.3) drop-shadow(0 0 8px var(--border-accent));
+}
+
+.radial-doom-glow {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 300ms ease;
+  pointer-events: none;
+}
+
+.radial-doom-trigger.active .radial-doom-glow {
+  opacity: 1;
+  animation: radialGlowPulse 2.5s ease-in-out infinite;
+}
+
+@keyframes radialGlowPulse {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.4); opacity: 1; }
+}
+
+/* --- SVG Arc Menu --- */
+.radial-arc-svg {
+  overflow: visible;
+}
+
+@keyframes arcFadeIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Sub-segment hover via CSS (no React state needed — cleaner) */
+.radial-sub-path {
+  transition: fill 150ms ease, stroke 150ms ease;
+}
+
+g:hover > .radial-sub-path {
+  fill: var(--accent-glow);
+  stroke: var(--border-accent);
+}
+
+.radial-sub-label {
+  transition: fill 150ms ease;
+}
+
+g:hover > .radial-sub-label {
+  fill: #ffffff;
+}
+
+.radial-sub-key {
+  transition: fill 150ms ease;
+}
+
+g:hover > .radial-sub-key {
+  fill: var(--text-secondary);
 }
 
 /* --- Sidebar --- */
@@ -755,14 +801,13 @@ input::placeholder, textarea::placeholder {
   overflow: hidden;
   position: relative;
   height: 100%;
-  border-color: #3c3c3c;
+  border-color: transparent;
   transition: border-color 200ms ease, transform 250ms ease, opacity 250ms ease;
 }
 
 .sidebar.focused {
-  border-color: #007acc;
+  border-color: #3c3c3c;
 }
-
 .sidebar-header {
   display: flex;
   align-items: center;
@@ -3133,9 +3178,9 @@ input::placeholder, textarea::placeholder {
   overflow: hidden;
   position: relative;
   background:
-    radial-gradient(circle at left center, rgba(218, 119, 86, 0.09), transparent 32%),
-    radial-gradient(circle at right top, rgba(95, 179, 196, 0.08), transparent 28%),
-    linear-gradient(180deg, rgba(29, 29, 26, 0.98), rgba(23, 23, 20, 0.98));
+    radial-gradient(circle at left center, rgba(255, 255, 255, 0.02), transparent 32%),
+    radial-gradient(circle at right top, rgba(255, 255, 255, 0.01), transparent 28%),
+    linear-gradient(180deg, #050505, #000000);
 }
 
 .settings-header {
@@ -3159,250 +3204,56 @@ input::placeholder, textarea::placeholder {
 
 .settings-body {
   flex: 1;
-  display: grid;
-  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  display: flex;
   overflow: hidden;
-  min-height: 0;
+  position: relative;
 }
 
 .settings-sidebar {
-  border-right: 1px solid var(--border-subtle);
-  overflow: hidden;
-  position: relative;
-  background:
-    radial-gradient(circle at 28% 50%, rgba(255, 255, 255, 0.03), transparent 32%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 26%),
-    linear-gradient(180deg, rgba(17, 17, 15, 0.82), rgba(29, 29, 26, 0.84));
-}
-
-.settings-sidebar-item {
-  border: 0;
-  background: transparent;
-  color: var(--text-secondary);
-}
-
-.settings-sidebar-radial {
-  padding: 20px 0 20px 18px;
-}
-
-.settings-sidebar-orbit {
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
   height: 100%;
-  min-height: 620px;
-  overflow: hidden;
-  isolation: isolate;
-}
-
-.settings-sidebar-core {
-  position: absolute;
-  left: 18px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 136px;
-  min-height: 136px;
-  padding: 18px 16px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 6px;
-  border-radius: 34px;
-  border: 1px solid rgba(218, 119, 86, 0.2);
-  background:
-    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.08), transparent 38%),
-    linear-gradient(145deg, rgba(37, 36, 32, 0.94), rgba(23, 23, 20, 0.92));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 18px 38px rgba(0, 0, 0, 0.34);
-  z-index: 3;
-}
-
-.settings-sidebar-core::before {
-  content: '';
-  position: absolute;
-  inset: 10px;
-  border-radius: 26px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  width: 36px;
+  border-right: none;
+  background: transparent;
+  z-index: 200;
+  overflow: visible;
   pointer-events: none;
 }
 
-.settings-sidebar-core-kicker {
-  font-size: 0.6923rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: var(--accent-primary);
+.settings-sidebar.expanded {
+  /* No width change — radial is an overlay on its own layer */
+  width: 36px;
 }
 
-.settings-sidebar-core-title {
-  font-size: 1.3077rem;
-  font-weight: 700;
-  line-height: 1.1;
-  color: var(--text-primary);
-}
-
-.settings-sidebar-core-caption {
-  font-size: 0.8462rem;
-  line-height: 1.45;
-  color: var(--text-muted);
-}
-
-.settings-sidebar-track {
-  position: absolute;
-  left: 56px;
-  top: 50%;
-  width: 238px;
-  height: 454px;
-  transform: translateY(-50%);
-  border-radius: 0 240px 240px 0;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-left: none;
-  background:
-    radial-gradient(circle at left center, rgba(218, 119, 86, 0.12), transparent 46%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 40%);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.02),
-    inset 18px 0 40px rgba(0, 0, 0, 0.18);
-  pointer-events: none;
-}
-
-.settings-sidebar-orbit-item {
-  position: absolute;
-  left: 34px;
-  top: 50%;
-  width: 250px;
-  height: 52px;
-  display: block;
-  padding: 0;
-  text-align: left;
-  transform-origin: 18px 26px;
-  transition: transform 180ms ease, opacity 180ms ease, filter 180ms ease;
-  filter: saturate(0.88);
-}
-
-.settings-sidebar-orbit-item::before {
-  content: '';
-  position: absolute;
-  left: 20px;
-  top: 50%;
-  width: calc(var(--orbit-label-shift) - 34px);
-  height: 1px;
-  transform: translateY(-50%);
-  background: linear-gradient(90deg, color-mix(in srgb, var(--orbit-accent) 78%, transparent), transparent);
-  opacity: 0.55;
-  transition: opacity 180ms ease, filter 180ms ease;
-}
-
-.settings-sidebar-orbit-item:hover,
-.settings-sidebar-orbit-item:focus-visible,
-.settings-sidebar-orbit-item.active {
-  filter: saturate(1.08);
-}
-
-.settings-sidebar-orbit-item:hover::before,
-.settings-sidebar-orbit-item:focus-visible::before,
-.settings-sidebar-orbit-item.active::before {
-  opacity: 0.9;
-}
-
-.settings-sidebar-orbit-node {
+.settings-radial-svg {
   position: absolute;
   left: 0;
   top: 50%;
-  width: 40px;
-  height: 40px;
   transform: translateY(-50%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--orbit-accent) 34%, var(--border-default));
-  background:
-    radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.16), transparent 32%),
-    linear-gradient(160deg, color-mix(in srgb, var(--orbit-accent) 16%, var(--bg-elevated)), var(--bg-deepest));
-  color: color-mix(in srgb, var(--orbit-accent) 78%, white);
-  box-shadow:
-    0 14px 24px rgba(0, 0, 0, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  pointer-events: auto;
+  overflow: visible;
 }
 
-.settings-sidebar-orbit-node svg {
-  width: 18px;
-  height: 18px;
-}
-
-.settings-sidebar-orbit-item:hover .settings-sidebar-orbit-node,
-.settings-sidebar-orbit-item:focus-visible .settings-sidebar-orbit-node,
-.settings-sidebar-orbit-item.active .settings-sidebar-orbit-node {
-  transform: translateY(-50%) scale(1.08);
-  border-color: color-mix(in srgb, var(--orbit-accent) 58%, white);
-  box-shadow:
-    0 18px 30px rgba(0, 0, 0, 0.34),
-    0 0 24px color-mix(in srgb, var(--orbit-accent) 20%, transparent);
-}
-
-.settings-sidebar-orbit-label {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  min-width: 150px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 12px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
-    rgba(23, 23, 20, 0.88);
-  transform: translate(var(--orbit-label-shift), -50%);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2);
-  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
-}
-
-.settings-sidebar-orbit-item:hover .settings-sidebar-orbit-label,
-.settings-sidebar-orbit-item:focus-visible .settings-sidebar-orbit-label,
-.settings-sidebar-orbit-item.active .settings-sidebar-orbit-label {
-  border-color: color-mix(in srgb, var(--orbit-accent) 38%, var(--border-default));
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--orbit-accent) 12%, rgba(255, 255, 255, 0.04)), rgba(255, 255, 255, 0.01)),
-    rgba(30, 30, 27, 0.92);
-  box-shadow:
-    0 14px 30px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-
-.settings-sidebar-orbit-label-text {
-  font-size: 1rem;
-  font-weight: 650;
-  color: var(--text-primary);
-  letter-spacing: 0.02em;
-}
-
-.settings-sidebar-orbit-label-meta {
-  font-size: 0.7692rem;
-  color: var(--text-muted);
-  letter-spacing: 0.02em;
-}
-
-.settings-sidebar-orbit-item.active .settings-sidebar-orbit-label-text {
-  color: color-mix(in srgb, var(--orbit-accent) 58%, white);
-}
-
+/* Settings content — fixed margin, never shifts */
 .settings-content {
+  flex: 1;
   min-width: 0;
-  margin: 16px 18px 16px 0;
+  margin: 16px 18px 16px 50px;
   padding: 22px 28px 28px;
   overflow-y: auto;
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 28px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 14%),
-    linear-gradient(180deg, rgba(37, 36, 32, 0.96), rgba(23, 23, 20, 0.94));
+    linear-gradient(180deg, rgba(37, 36, 32, 0.0), rgba(23, 23, 20, 0.0));
+  background-color: #050505;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
     0 24px 54px rgba(0, 0, 0, 0.26);
   position: relative;
+  z-index: 50;
 }
 
 .settings-content::before {
@@ -3500,86 +3351,28 @@ input::placeholder, textarea::placeholder {
   text-align: center;
 }
 
+/* ── Responsive ── */
+@media (max-height: 600px) {
+  .settings-radial-svg {
+    transform: translateY(-50%) scale(0.8);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-sidebar,
+  .settings-radial-svg,
+  .settings-content {
+    transition-duration: 0.1s !important;
+  }
+}
+
 @media (max-width: 1180px) {
-  .settings-body {
-    grid-template-columns: 1fr;
-  }
-
   .settings-sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .settings-sidebar-radial {
-    padding: 16px 16px 0;
-  }
-
-  .settings-sidebar-orbit {
-    min-height: unset;
-    display: flex;
-    gap: 10px;
-    padding: 0 0 16px;
-    overflow-x: auto;
-    overflow-y: hidden;
-  }
-
-  .settings-sidebar-core,
-  .settings-sidebar-track {
     display: none;
-  }
-
-  .settings-sidebar-orbit-item {
-    position: relative;
-    left: auto;
-    top: auto;
-    width: auto;
-    height: auto;
-    min-width: 220px;
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    padding: 12px 14px;
-    transform: none !important;
-    opacity: 1 !important;
-    border-radius: 18px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    background:
-      linear-gradient(135deg, rgba(255, 255, 255, 0.03), transparent 48%),
-      rgba(23, 23, 20, 0.72);
-  }
-
-  .settings-sidebar-orbit-item::before {
-    display: none;
-  }
-
-  .settings-sidebar-orbit-node {
-    position: relative;
-    left: auto;
-    top: auto;
-    transform: none;
-    margin-right: 12px;
-  }
-
-  .settings-sidebar-orbit-item:hover .settings-sidebar-orbit-node,
-  .settings-sidebar-orbit-item:focus-visible .settings-sidebar-orbit-node,
-  .settings-sidebar-orbit-item.active .settings-sidebar-orbit-node {
-    transform: scale(1.06);
-  }
-
-  .settings-sidebar-orbit-label {
-    position: relative;
-    left: auto;
-    top: auto;
-    min-width: 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-    transform: none !important;
   }
 
   .settings-content {
-    margin: 12px;
+    margin: 12px !important;
     padding: 20px 18px 24px;
     border-radius: 22px;
   }

@@ -10,20 +10,6 @@ interface UseInlineCompletionOptions {
   activeTab?: unknown;
 }
 
-function getAcceptActionKeybindings(
-  acceptKey: 'tab' | 'enter' | 'ctrl+enter'
-): number[] {
-  if (acceptKey === 'tab') {
-    return [monaco.KeyCode.Tab];
-  }
-
-  if (acceptKey === 'enter') {
-    return [monaco.KeyCode.Enter];
-  }
-
-  return [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter];
-}
-
 export function useInlineCompletion({ editor, enabled = true }: UseInlineCompletionOptions) {
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
@@ -31,25 +17,43 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
   const decorationsCollectionRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const widgetRef = useRef<monaco.editor.IContentWidget | null>(null);
   const suggestionContextKeyRef = useRef<monaco.editor.IContextKey<boolean> | null>(null);
+  const acceptTabContextKeyRef = useRef<monaco.editor.IContextKey<boolean> | null>(null);
+  const acceptEnterContextKeyRef = useRef<monaco.editor.IContextKey<boolean> | null>(null);
+  const acceptCtrlEnterContextKeyRef = useRef<monaco.editor.IContextKey<boolean> | null>(null);
+  const viewZoneIdRef = useRef<string | null>(null);
 
   const aiConfig = useAIStore((state) => state.config);
   const pendingSuggestion = useAIStore((state) => state.pendingSuggestion);
   const status = useAIStore((state) => state.status);
+  const acceptSuggestionRef = useRef<() => boolean>(() => false);
+  const rejectSuggestionRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     if (!editor) {
       decorationsCollectionRef.current = null;
       suggestionContextKeyRef.current = null;
+      acceptTabContextKeyRef.current = null;
+      acceptEnterContextKeyRef.current = null;
+      acceptCtrlEnterContextKeyRef.current = null;
       return;
     }
 
     decorationsCollectionRef.current = editor.createDecorationsCollection([]);
     suggestionContextKeyRef.current = editor.createContextKey('aiInlineSuggestionVisible', false);
+    acceptTabContextKeyRef.current = editor.createContextKey('aiInlineAcceptTab', false);
+    acceptEnterContextKeyRef.current = editor.createContextKey('aiInlineAcceptEnter', false);
+    acceptCtrlEnterContextKeyRef.current = editor.createContextKey('aiInlineAcceptCtrlEnter', false);
     return () => {
       suggestionContextKeyRef.current?.set(false);
+      acceptTabContextKeyRef.current?.set(false);
+      acceptEnterContextKeyRef.current?.set(false);
+      acceptCtrlEnterContextKeyRef.current?.set(false);
       decorationsCollectionRef.current?.clear();
       decorationsCollectionRef.current = null;
       suggestionContextKeyRef.current = null;
+      acceptTabContextKeyRef.current = null;
+      acceptEnterContextKeyRef.current = null;
+      acceptCtrlEnterContextKeyRef.current = null;
     };
   }, [editor]);
 
@@ -67,12 +71,30 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     widgetRef.current = null;
   }, [editor]);
 
+  const removeViewZone = useCallback(() => {
+    if (!editor || !viewZoneIdRef.current) {
+      return;
+    }
+
+    try {
+      editor.changeViewZones((changeAccessor) => {
+        if (viewZoneIdRef.current) {
+          changeAccessor.removeZone(viewZoneIdRef.current);
+          viewZoneIdRef.current = null;
+        }
+      });
+    } catch {
+      // View zone may already be gone during teardown.
+    }
+  }, [editor]);
+
   const clearGhostText = useCallback(() => {
     removeContentWidget();
+    removeViewZone();
     decorationsCollectionRef.current?.set([]);
     anchorPositionRef.current = null;
     suggestionContextKeyRef.current?.set(false);
-  }, [removeContentWidget]);
+  }, [removeContentWidget, removeViewZone]);
 
   const renderMultilineWidget = useCallback(
     (lines: string[], position: monaco.Position) => {
@@ -81,35 +103,46 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
       }
 
       removeContentWidget();
+      removeViewZone();
 
-      const domNode = document.createElement('div');
-      domNode.className = 'ai-ghost-text-widget ai-ghost-text-multiline';
-      domNode.textContent = lines.join('\n');
-      domNode.style.pointerEvents = 'none';
-      domNode.style.whiteSpace = 'pre';
-      domNode.style.zIndex = '1400';
-      domNode.style.lineHeight = `${editor.getOption(monaco.editor.EditorOption.lineHeight)}px`;
-      editor.applyFontInfo(domNode);
+      const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
+      
+      // Create a view zone to push content down
+      editor.changeViewZones((changeAccessor) => {
+        const domNode = document.createElement('div');
+        domNode.className = 'ai-ghost-text-widget ai-ghost-text-multiline';
+        domNode.style.pointerEvents = 'none';
+        domNode.style.whiteSpace = 'pre';
+        domNode.style.fontFamily = editor.getOption(monaco.editor.EditorOption.fontFamily);
+        domNode.style.fontSize = `${editor.getOption(monaco.editor.EditorOption.fontSize)}px`;
+        domNode.style.lineHeight = `${lineHeight}px`;
+        domNode.style.paddingLeft = '4px';
+        editor.applyFontInfo(domNode);
 
-      const widgetId = `ai-inline-ghost-${Date.now()}`;
-      const multilineAnchor = new monaco.Position(position.lineNumber, 1);
-      const widget: monaco.editor.IContentWidget = {
-        allowEditorOverflow: true,
-        suppressMouseDown: true,
-        getId: () => widgetId,
-        getDomNode: () => domNode,
-        getPosition: () => ({
-          position: multilineAnchor,
-          preference: [monaco.editor.ContentWidgetPositionPreference.BELOW],
-          positionAffinity: monaco.editor.PositionAffinity.Right,
-        }),
-      };
+        // Render each line separately to handle empty lines properly
+        lines.forEach((line, index) => {
+          const lineDiv = document.createElement('div');
+          lineDiv.className = 'ai-ghost-text';
+          lineDiv.style.minHeight = `${lineHeight}px`;
+          lineDiv.style.lineHeight = `${lineHeight}px`;
+          
+          // For empty lines, add a zero-width space to maintain height
+          lineDiv.textContent = line.length > 0 ? line : '\u200B';
+          
+          domNode.appendChild(lineDiv);
+        });
 
-      editor.addContentWidget(widget);
-      editor.layoutContentWidget(widget);
-      widgetRef.current = widget;
+        const viewZoneId = changeAccessor.addZone({
+          afterLineNumber: position.lineNumber,
+          heightInLines: lines.length,
+          domNode: domNode,
+          suppressMouseDown: true,
+        });
+
+        viewZoneIdRef.current = viewZoneId;
+      });
     },
-    [editor, removeContentWidget]
+    [editor, removeContentWidget, removeViewZone]
   );
 
   const updateGhostText = useCallback(
@@ -119,6 +152,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
       }
 
       removeContentWidget();
+      removeViewZone();
 
       if (!text || !text.trim()) {
         decorationsCollectionRef.current.set([]);
@@ -163,7 +197,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
         renderMultilineWidget(restLines, position);
       }
     },
-    [editor, aiConfig.completion.multiLineEnabled, removeContentWidget, renderMultilineWidget]
+    [editor, aiConfig.completion.multiLineEnabled, removeContentWidget, removeViewZone, renderMultilineWidget]
   );
 
   const triggerCompletion = useCallback(
@@ -257,6 +291,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
 
     return true;
   }, [editor, pendingSuggestion, clearGhostText]);
+  acceptSuggestionRef.current = acceptSuggestion;
 
   const rejectSuggestion = useCallback(() => {
     if (useAIStore.getState().pendingSuggestion) {
@@ -264,6 +299,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     }
     clearGhostText();
   }, [clearGhostText]);
+  rejectSuggestionRef.current = rejectSuggestion;
 
   const acceptPartialSuggestion = useCallback(
     (wordCount: number = 1): boolean => {
@@ -318,6 +354,47 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
   );
 
   useEffect(() => {
+    acceptTabContextKeyRef.current?.set(aiConfig.completion.acceptKey === 'tab');
+    acceptEnterContextKeyRef.current?.set(aiConfig.completion.acceptKey === 'enter');
+    acceptCtrlEnterContextKeyRef.current?.set(aiConfig.completion.acceptKey === 'ctrl+enter');
+  }, [aiConfig.completion.acceptKey]);
+
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+
+    editor.addCommand(
+      monaco.KeyCode.Tab,
+      () => {
+        acceptSuggestionRef.current();
+      },
+      'aiInlineSuggestionVisible && aiInlineAcceptTab'
+    );
+    editor.addCommand(
+      monaco.KeyCode.Enter,
+      () => {
+        acceptSuggestionRef.current();
+      },
+      'aiInlineSuggestionVisible && aiInlineAcceptEnter'
+    );
+    editor.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+      () => {
+        acceptSuggestionRef.current();
+      },
+      'aiInlineSuggestionVisible && aiInlineAcceptCtrlEnter'
+    );
+    editor.addCommand(
+      monaco.KeyCode.Escape,
+      () => {
+        rejectSuggestionRef.current();
+      },
+      'aiInlineSuggestionVisible'
+    );
+  }, [editor]);
+
+  useEffect(() => {
     if (!editor || !aiConfig.enabled || !enabled) {
       return;
     }
@@ -364,7 +441,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     const acceptAction = editor.addAction({
       id: 'ai.acceptSuggestion',
       label: 'Accept AI Suggestion',
-      keybindings: getAcceptActionKeybindings(aiConfig.completion.acceptKey),
+      keybindings: [],
       precondition: 'aiInlineSuggestionVisible',
       run: () => {
         acceptSuggestion();
@@ -374,7 +451,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
     const rejectAction = editor.addAction({
       id: 'ai.rejectSuggestion',
       label: 'Reject AI Suggestion',
-      keybindings: [monaco.KeyCode.Escape],
+      keybindings: [],
       precondition: 'aiInlineSuggestionVisible',
       run: () => {
         rejectSuggestion();
@@ -389,6 +466,7 @@ export function useInlineCompletion({ editor, enabled = true }: UseInlineComplet
           ? monaco.KeyMod.CtrlCmd | monaco.KeyCode.RightArrow
           : monaco.KeyMod.Alt | monaco.KeyCode.RightArrow,
       ],
+      precondition: 'aiInlineSuggestionVisible',
       run: () => {
         if (!acceptPartialSuggestion(1)) {
           editor.trigger('keyboard', 'cursorWordEndRight', {});

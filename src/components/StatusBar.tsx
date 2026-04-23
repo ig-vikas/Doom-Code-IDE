@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useEditorStore, useBuildStore, useThemeStore, useUIStore } from '../stores';
+import { useSolveCounterStore } from '../stores/solveCounterStore';
 import type { SplitNode } from '../types';
 import {
   VscWarning,
   VscError,
   VscBug,
+  VscAdd,
+  VscRemove,
 } from 'react-icons/vsc';
 import AIDebugPanel from './ai/AIDebugPanel';
 
@@ -41,6 +44,9 @@ export default function StatusBar() {
   const currentTheme = useThemeStore((s) => s.currentTheme);
   const saveIndicatorState = useUIStore((s) => s.saveIndicatorState);
   const resetSavingIndicator = useUIStore((s) => s.resetSavingIndicator);
+  const todayCount = useSolveCounterStore((s) => s.todayCount);
+  const increment = useSolveCounterStore((s) => s.increment);
+  const decrement = useSolveCounterStore((s) => s.decrement);
 
   const [warningFlash, setWarningFlash] = useState(false);
   const [errorFlash, setErrorFlash] = useState(false);
@@ -111,6 +117,15 @@ export default function StatusBar() {
           >
             <VscBug />
             <span>AI Debug</span>
+          </button>
+        </div>
+        <div className="solve-counter">
+          <button type="button" className="solve-counter-btn" onClick={decrement} title="Undo solve">
+            <VscRemove />
+          </button>
+          <span className="solve-counter-value" title="Questions solved today">{todayCount}</span>
+          <button type="button" className="solve-counter-btn plus" onClick={increment} title="Mark solved">
+            <VscAdd />
           </button>
         </div>
         <div className="statusbar-right">

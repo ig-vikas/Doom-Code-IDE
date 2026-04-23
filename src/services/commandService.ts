@@ -345,6 +345,7 @@ export function initializeCommands() {
   // ======================== EDIT ========================
   const monacoAction = (actionId: string) => () => {
     if (activeEditor) {
+      activeEditor.focus();
       const action = activeEditor.getAction(actionId);
       if (action) {
         action.run();
@@ -352,11 +353,11 @@ export function initializeCommands() {
     }
   };
 
-  registerCommand('edit.undo', () => activeEditor?.trigger('keyboard', 'undo', null));
-  registerCommand('edit.redo', () => activeEditor?.trigger('keyboard', 'redo', null));
-  registerCommand('edit.cut', () => { document.execCommand('cut'); });
-  registerCommand('edit.copy', () => { document.execCommand('copy'); });
-  registerCommand('edit.paste', () => { document.execCommand('paste'); });
+  registerCommand('edit.undo', () => { activeEditor?.focus(); activeEditor?.trigger('keyboard', 'undo', null); });
+  registerCommand('edit.redo', () => { activeEditor?.focus(); activeEditor?.trigger('keyboard', 'redo', null); });
+  registerCommand('edit.cut', () => { activeEditor?.focus(); activeEditor?.trigger('keyboard', 'editor.action.clipboardCutAction', null); });
+  registerCommand('edit.copy', () => { activeEditor?.focus(); activeEditor?.trigger('keyboard', 'editor.action.clipboardCopyAction', null); });
+  registerCommand('edit.paste', () => { activeEditor?.focus(); activeEditor?.trigger('keyboard', 'editor.action.clipboardPasteAction', null); });
   registerCommand('edit.deleteLine', monacoAction('editor.action.deleteLines'));
   registerCommand('edit.duplicateLine', monacoAction('editor.action.copyLinesDownAction'));
   registerCommand('edit.moveLineUp', monacoAction('editor.action.moveLinesUpAction'));
@@ -374,6 +375,7 @@ export function initializeCommands() {
   // ======================== SELECTION ========================
   registerCommand('selection.addNextOccurrence', monacoAction('editor.action.addSelectionToNextFindMatch'));
   registerCommand('selection.selectAllOccurrences', monacoAction('editor.action.selectHighlights'));
+
   registerCommand('selection.skipOccurrence', monacoAction('editor.action.moveSelectionToNextFindMatch'));
   registerCommand('selection.selectLine', monacoAction('expandLineSelection'));
   registerCommand('selection.splitIntoLines', monacoAction('editor.action.insertCursorAtEndOfEachLineSelected'));
@@ -410,12 +412,14 @@ export function initializeCommands() {
   // ======================== SEARCH ========================
   registerCommand('search.find', () => {
     if (activeEditor) {
+      activeEditor.focus();
       activeEditor.trigger('keyboard', 'actions.find', null);
     }
   });
 
   registerCommand('search.findReplace', () => {
     if (activeEditor) {
+      activeEditor.focus();
       activeEditor.trigger('keyboard', 'editor.action.startFindReplaceAction', null);
     }
   });

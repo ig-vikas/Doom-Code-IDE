@@ -45,54 +45,8 @@ const editorFontPresets = EDITOR_FONT_OPTIONS;
 
 export default function SettingsPanel() {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('editor');
-  const [hoveredCategory, setHoveredCategory] = useState<SettingsCategory | null>(null);
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   const settings = useSettingsStore((s) => s.settings);
-
-  const activeCategoryMeta = useMemo(
-    () => categories.find((category) => category.id === activeCategory) ?? categories[0],
-    [activeCategory]
-  );
-
-  const focusCategory = hoveredCategory ?? activeCategory;
-  const focusIndex = Math.max(
-    0,
-    categories.findIndex((category) => category.id === focusCategory)
-  );
-
-  const radialItems = useMemo(() => {
-    const arcStart = -78;
-    const arcEnd = 78;
-    const segmentCount = Math.max(categories.length - 1, 1);
-
-    return categories.map((category, index) => {
-      const angle = arcStart + ((arcEnd - arcStart) * index) / segmentCount;
-      const radians = (angle * Math.PI) / 180;
-      const distanceFromFocus = Math.abs(index - focusIndex);
-      const emphasis = Math.max(0, 1 - distanceFromFocus / 4);
-      const isActive = category.id === activeCategory;
-      const orbitRadius = 104 + emphasis * 24 + (isActive ? 8 : 0);
-      const x = Math.cos(radians) * orbitRadius;
-      const y = Math.sin(radians) * orbitRadius * 1.08;
-      const scale = 0.84 + emphasis * 0.18 + (isActive ? 0.08 : 0);
-      const labelOffset = 72 + emphasis * 18 + (isActive ? 8 : 0);
-      const opacity = 0.52 + emphasis * 0.38 + (isActive ? 0.1 : 0);
-
-      return {
-        ...category,
-        isActive,
-        emphasis,
-        opacity,
-        style: {
-          transform: `translate(${Math.round(x)}px, ${Math.round(y)}px) scale(${scale.toFixed(3)})`,
-          opacity,
-          zIndex: 20 + Math.round(emphasis * 10) + (isActive ? 10 : 0),
-          '--orbit-accent': category.accent,
-          '--orbit-label-shift': `${Math.round(labelOffset)}px`,
-        } as CSSProperties,
-      };
-    });
-  }, [activeCategory, focusIndex]);
 
   const handleClose = useCallback(() => {
     setSettingsOpen(false);
@@ -109,43 +63,7 @@ export default function SettingsPanel() {
         </button>
       </div>
       <div className="settings-body">
-        <div className="settings-sidebar settings-sidebar-radial">
-          <div className="settings-sidebar-orbit">
-            <div className="settings-sidebar-core">
-              <span className="settings-sidebar-core-kicker">Navigation Orbit</span>
-              <span className="settings-sidebar-core-title">{activeCategoryMeta.label}</span>
-              <span className="settings-sidebar-core-caption">{activeCategoryMeta.caption}</span>
-            </div>
-            <div className="settings-sidebar-track" aria-hidden="true" />
-            {radialItems.map((category, index) => {
-              const Icon = category.icon;
-              return (
-                <button
-                  key={category.id}
-                  className={`settings-sidebar-item settings-sidebar-orbit-item ${category.isActive ? 'active' : ''}`}
-                  style={category.style}
-                  onClick={() => setActiveCategory(category.id)}
-                  onMouseEnter={() => setHoveredCategory(category.id)}
-                  onMouseLeave={() => setHoveredCategory((current) => (current === category.id ? null : current))}
-                  onFocus={() => setHoveredCategory(category.id)}
-                  onBlur={() => setHoveredCategory((current) => (current === category.id ? null : current))}
-                  aria-pressed={category.isActive}
-                  title={category.label}
-                >
-                  <span className="settings-sidebar-orbit-node">
-                    <Icon />
-                  </span>
-                  <span className="settings-sidebar-orbit-label">
-                    <span className="settings-sidebar-orbit-label-text">{category.label}</span>
-                    <span className="settings-sidebar-orbit-label-meta">
-                      {category.isActive ? `Section ${index + 1} active` : category.caption}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <SettingsSidebar activeCategory={activeCategory} onChangeCategory={setActiveCategory} />
         <div className="settings-content">
           {activeCategory === 'editor' && <EditorSettings />}
           {activeCategory === 'appearance' && <AppearanceSettings />}
@@ -158,6 +76,283 @@ export default function SettingsPanel() {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ── Arc geometry helpers (shared with RadialDoomMenu) ── */
+function sToRad(deg: number) { return (deg * Math.PI) / 180; }
+function sPolarXY(cx: number, cy: number, r: number, deg: number) {
+  const rad = sToRad(deg);
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+function sArcPath(cx: number, cy: number, innerR: number, outerR: number, startDeg: number, endDeg: number) {
+  const s1 = sPolarXY(cx, cy, outerR, startDeg);
+  const s2 = sPolarXY(cx, cy, outerR, endDeg);
+  const s3 = sPolarXY(cx, cy, innerR, endDeg);
+  const s4 = sPolarXY(cx, cy, innerR, startDeg);
+  const large = endDeg - startDeg > 180 ? 1 : 0;
+  return [
+    `M${s1.x},${s1.y}`,
+    `A${outerR},${outerR} 0 ${large} 1 ${s2.x},${s2.y}`,
+    `L${s3.x},${s3.y}`,
+    `A${innerR},${innerR} 0 ${large} 0 ${s4.x},${s4.y}`,
+    'Z',
+  ].join(' ');
+}
+
+// Settings arc constants — half-disc opening to the RIGHT (from -80° to +80°)
+const S_CX = 0;
+const S_CY = 220;
+const S_INNER_R = 40;
+const S_OUTER_R = 175;
+const S_START_DEG = -80;
+const S_END_DEG = 80;
+const S_GAP = 1.8;
+const S_COLLAPSED_R = 26;
+
+function SettingsSidebar({ activeCategory, onChangeCategory }: { activeCategory: SettingsCategory, onChangeCategory: (cat: SettingsCategory) => void }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelCollapse = useCallback(() => {
+    if (collapseTimerRef.current) { clearTimeout(collapseTimerRef.current); collapseTimerRef.current = null; }
+  }, []);
+
+  const handleMouseEnter = useCallback(() => { cancelCollapse(); setIsExpanded(true); }, [cancelCollapse]);
+  const handleMouseLeave = useCallback(() => {
+    cancelCollapse();
+    collapseTimerRef.current = setTimeout(() => { setIsExpanded(false); setHoveredItem(null); }, 350);
+  }, [cancelCollapse]);
+
+  useEffect(() => () => { if (collapseTimerRef.current) clearTimeout(collapseTimerRef.current); }, []);
+
+  // Build segments
+  const segments = useMemo(() => {
+    const n = categories.length;
+    const span = S_END_DEG - S_START_DEG;
+    const totalGaps = S_GAP * (n - 1);
+    const segAngle = (span - totalGaps) / n;
+
+    return categories.map((cat, i) => {
+      const start = S_START_DEG + i * (segAngle + S_GAP);
+      const end = start + segAngle;
+      const mid = (start + end) / 2;
+      const iconR = S_INNER_R + (S_OUTER_R - S_INNER_R) * 0.32;
+      const labelR = S_INNER_R + (S_OUTER_R - S_INNER_R) * 0.72;
+      return {
+        ...cat,
+        startDeg: start,
+        endDeg: end,
+        midDeg: mid,
+        d: sArcPath(S_CX, S_CY, S_INNER_R, S_OUTER_R, start, end),
+        iconPt: sPolarXY(S_CX, S_CY, iconR, mid),
+        labelPt: sPolarXY(S_CX, S_CY, labelR, mid),
+      };
+    });
+  }, []);
+
+  // Collapsed half-circle path
+  const collapsedPath = useMemo(() => {
+    const r = S_COLLAPSED_R;
+    return `M ${S_CX} ${S_CY - r} A ${r} ${r} 0 0 1 ${S_CX} ${S_CY + r} Z`;
+  }, []);
+
+  const svgW = S_OUTER_R + 30;
+  const svgH = S_CY + S_OUTER_R + 30;
+
+  // Collapsed pill dimensions (tiny hover area)
+  const pillW = S_COLLAPSED_R + 10;
+  const pillH = S_COLLAPSED_R * 2 + 20;
+  const pillViewY = S_CY - S_COLLAPSED_R - 10;
+
+  return (
+    <aside
+      className={`settings-sidebar ${isExpanded ? 'expanded' : ''}`}
+    >
+      {/* COLLAPSED: Tiny SVG — only the pill is hoverable */}
+      {!isExpanded && (
+        <svg
+          className="settings-radial-svg"
+          width={pillW}
+          height={pillH}
+          viewBox={`${-5} ${pillViewY} ${pillW + 5} ${pillH}`}
+          style={{ overflow: 'visible', cursor: 'pointer' }}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
+          <g style={{ pointerEvents: 'auto' }}>
+            <path
+              d={collapsedPath}
+              fill="var(--bg-surface)"
+              stroke="var(--border-subtle)"
+              strokeWidth="1"
+            />
+            <circle cx={S_CX + 8} cy={S_CY - 8} r="2" fill="var(--text-muted)" />
+            <circle cx={S_CX + 8} cy={S_CY} r="2" fill="var(--text-muted)" />
+            <circle cx={S_CX + 8} cy={S_CY + 8} r="2" fill="var(--text-muted)" />
+          </g>
+        </svg>
+      )}
+
+      {/* EXPANDED: Full-size radial SVG */}
+      {isExpanded && (
+        <svg
+          className="settings-radial-svg"
+          width={svgW}
+          height={svgH}
+          viewBox={`${-10} 0 ${svgW + 10} ${svgH}`}
+          style={{ overflow: 'visible' }}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
+          <defs>
+            <filter id="settingsArcShadow" x="-15%" y="-15%" width="130%" height="130%">
+              <feDropShadow dx="0" dy="4" stdDeviation="10" floodColor="rgba(0,0,0,0.65)" />
+            </filter>
+            <filter id="settingsArcGlow" x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="5" result="b" />
+              <feComposite in="SourceGraphic" in2="b" operator="over" />
+            </filter>
+          </defs>
+
+          <g>
+            {/* Invisible hover bridge from edge to inner arc */}
+            <path
+              d={sArcPath(S_CX, S_CY, 0, S_INNER_R, S_START_DEG - 5, S_END_DEG + 5)}
+              fill="transparent"
+              stroke="none"
+              style={{ pointerEvents: 'auto' }}
+            />
+
+            {/* Main ring background */}
+            <path
+              d={sArcPath(S_CX, S_CY, S_INNER_R - 3, S_OUTER_R + 3, S_START_DEG - 0.5, S_END_DEG + 0.5)}
+              fill="var(--bg-surface)"
+              stroke="var(--border-subtle)"
+              strokeWidth="1.5"
+              style={{ filter: 'url(#settingsArcShadow)', pointerEvents: 'auto' }}
+            />
+
+            {/* Divider lines */}
+            {segments.map((seg, i) => {
+              if (i === 0) return null;
+              const angle = seg.startDeg - S_GAP / 2;
+              const p1 = sPolarXY(S_CX, S_CY, S_INNER_R - 2, angle);
+              const p2 = sPolarXY(S_CX, S_CY, S_OUTER_R + 2, angle);
+              return (
+                <line
+                  key={`sdiv-${i}`}
+                  x1={p1.x} y1={p1.y}
+                  x2={p2.x} y2={p2.y}
+                  stroke="var(--border-subtle)"
+                  strokeWidth="0.8"
+                  style={{ pointerEvents: 'none' }}
+                />
+              );
+            })}
+
+            {/* Segments */}
+            {segments.map((seg, i) => {
+              const isActive = activeCategory === seg.id;
+              const isHovered = hoveredItem === seg.id;
+              const iconSize = 18;
+
+              return (
+                <g
+                  key={seg.id}
+                  style={{
+                    pointerEvents: 'auto',
+                    cursor: 'pointer',
+                    opacity: 0,
+                    animation: `arcFadeIn 280ms ${i * 35}ms cubic-bezier(0.22,1,0.36,1) forwards`,
+                  }}
+                  onMouseEnter={() => { cancelCollapse(); setHoveredItem(seg.id); }}
+                  onMouseLeave={() => setHoveredItem(null)}
+                  onClick={() => onChangeCategory(seg.id)}
+                >
+                  {/* Hit area + highlight */}
+                  <path
+                    d={seg.d}
+                    fill={
+                      isActive
+                        ? 'var(--accent-glow)'
+                        : isHovered
+                          ? 'var(--border-accent)'
+                          : 'transparent'
+                    }
+                    stroke={
+                      isActive
+                        ? 'var(--border-accent)'
+                        : isHovered
+                          ? 'var(--border-subtle)'
+                          : 'transparent'
+                    }
+                    strokeWidth="1.5"
+                    style={{
+                      transition: 'fill 180ms ease, stroke 180ms ease',
+                      filter: isActive ? 'url(#settingsArcGlow)' : 'none',
+                    }}
+                  />
+
+                  {/* Icon */}
+                  <foreignObject
+                    x={seg.iconPt.x - iconSize / 2}
+                    y={seg.iconPt.y - iconSize / 2}
+                    width={iconSize}
+                    height={iconSize}
+                    style={{ overflow: 'visible', pointerEvents: 'none' }}
+                  >
+                    <div style={{
+                      width: iconSize,
+                      height: iconSize,
+                      color: isActive ? '#ffffff' : isHovered ? 'var(--text-primary)' : 'var(--text-muted)',
+                      transition: 'color 180ms ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <seg.icon />
+                    </div>
+                  </foreignObject>
+
+                  {/* Label — rotated along radial line */}
+                  <text
+                    x={seg.labelPt.x}
+                    y={seg.labelPt.y}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill={isActive ? '#ffffff' : isHovered ? 'var(--text-primary)' : 'var(--text-secondary)'}
+                    fontSize="11"
+                    fontWeight={isActive ? 700 : 500}
+                    fontFamily="Inter, system-ui, sans-serif"
+                    letterSpacing="0.6px"
+                    transform={`rotate(${seg.midDeg}, ${seg.labelPt.x}, ${seg.labelPt.y})`}
+                    style={{ transition: 'fill 180ms ease', pointerEvents: 'none', userSelect: 'none' }}
+                  >
+                    {seg.label}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Center circle */}
+            <circle cx={S_CX} cy={S_CY} r={S_INNER_R - 5} fill="var(--bg-elevated)" stroke="var(--border-subtle)" strokeWidth="1" />
+            <text
+              x={S_CX + 6}
+              y={S_CY}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill="var(--text-muted)"
+              fontSize="16"
+              style={{ pointerEvents: 'none' }}
+            >
+              ⚙
+            </text>
+          </g>
+        </svg>
+      )}
+    </aside>
   );
 }
 
