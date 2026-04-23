@@ -1,13 +1,11 @@
 import { useState, useCallback, useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { VscChromeMinimize, VscChromeMaximize, VscChromeRestore, VscChromeClose, VscAdd, VscRemove, VscSparkle } from 'react-icons/vsc';
+import { VscChromeMinimize, VscChromeMaximize, VscChromeRestore, VscChromeClose, VscAdd, VscRemove } from 'react-icons/vsc';
 import { useSolveCounterStore } from '../stores/solveCounterStore';
-import { useAIStore } from '../stores/aiStore';
+import AIStatusBar from './ai/AIStatusBar';
 
 export default function TitleBar() {
   const [maximized, setMaximized] = useState(false);
-  const aiEnabled = useAIStore((s) => s.config.enabled);
-  const setAIEnabled = useAIStore((s) => s.setEnabled);
   const todayCount = useSolveCounterStore((s) => s.todayCount);
   const increment = useSolveCounterStore((s) => s.increment);
   const decrement = useSolveCounterStore((s) => s.decrement);
@@ -61,17 +59,7 @@ export default function TitleBar() {
 
       {/* Right: AI Toggle & Window Controls */}
       <div className="app-titlebar-right">
-        <button 
-          type="button" 
-          className={`titlebar-btn ai-toggle ${aiEnabled ? 'active' : ''}`}
-          onClick={() => setAIEnabled(!aiEnabled)}
-          title={aiEnabled ? "AI is ON" : "AI is OFF"}
-        >
-          <VscSparkle style={{ color: aiEnabled ? 'var(--accent-primary)' : 'var(--text-faint)', fontSize: '14px' }} />
-          <span style={{ fontSize: '11px', marginLeft: '6px', color: aiEnabled ? 'var(--text-primary)' : 'var(--text-faint)' }}>
-            AI
-          </span>
-        </button>
+        <AIStatusBar />
 
         <div className="floating-window-controls" style={{ position: 'static', background: 'transparent' }}>
           <button type="button" className="titlebar-btn" onClick={handleMinimize} aria-label="Minimize">

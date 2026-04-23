@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { VscChevronDown, VscSparkle } from 'react-icons/vsc';
 import { AI_PROVIDERS } from '../../config/aiModels';
 import { useAIStatus } from '../../hooks/useAIStatus';
 import { useAIStore } from '../../stores/aiStore';
@@ -7,12 +8,12 @@ import TokenCostIndicator from './TokenCostIndicator';
 import './AIStatusBar.css';
 
 const statusConfig = {
-  idle: { color: 'var(--accent-green)', text: 'Ready', icon: '●' },
-  loading: { color: 'var(--accent-yellow)', text: 'Loading...', icon: '◐' },
-  streaming: { color: 'var(--accent-blue)', text: 'Generating...', icon: '◑' },
-  error: { color: 'var(--accent-red)', text: 'Error', icon: '✕' },
-  disabled: { color: 'var(--text-muted)', text: 'Disabled', icon: '○' },
-  'no-api-key': { color: 'var(--accent-orange)', text: 'No API Key', icon: '!' },
+  idle: { color: 'var(--accent-green)', text: 'Ready' },
+  loading: { color: 'var(--accent-yellow)', text: 'Loading...' },
+  streaming: { color: 'var(--accent-blue)', text: 'Generating...' },
+  error: { color: 'var(--accent-red)', text: 'Error' },
+  disabled: { color: 'var(--text-muted)', text: 'Disabled' },
+  'no-api-key': { color: 'var(--accent-orange)', text: 'No API Key' },
 } as const;
 
 export function AIStatusBar() {
@@ -54,9 +55,9 @@ export function AIStatusBar() {
         type="button"
         className={`ai-toggle ${config.enabled ? 'enabled' : 'disabled'}`}
         onClick={() => setEnabled(!config.enabled)}
-        title={config.enabled ? 'Disable AI' : 'Enable AI'}
+        title={config.enabled ? 'Disable AI completions' : 'Enable AI completions'}
       >
-        <span className="ai-icon">⚡</span>
+        <VscSparkle className="ai-icon" />
         <span className="ai-label">{config.enabled ? 'ON' : 'OFF'}</span>
       </button>
 
@@ -73,7 +74,7 @@ export function AIStatusBar() {
               <span className="provider-name">{provider?.displayName}</span>
               <span className="model-separator">:</span>
               <span className="model-name">{modelDisplayName}</span>
-              <span className="dropdown-arrow">▾</span>
+              <VscChevronDown className="dropdown-arrow" />
             </button>
 
             {showSelector ? <ModelSelector onClose={() => setShowSelector(false)} /> : null}
@@ -83,9 +84,7 @@ export function AIStatusBar() {
             className={`ai-status-indicator status-${status}`}
             title={`${currentStatus.text}${connectionStatus === 'error' ? ' - Connection Error' : ''}`}
           >
-            <span className="status-dot" style={{ color: currentStatus.color }}>
-              {currentStatus.icon}
-            </span>
+            <span className="status-dot" style={{ backgroundColor: currentStatus.color }} />
             {isWorking ? <span className="status-text">{currentStatus.text}</span> : null}
           </div>
 
