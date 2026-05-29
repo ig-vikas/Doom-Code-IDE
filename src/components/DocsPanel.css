@@ -278,57 +278,6 @@
   border: 1px solid var(--claude-border-subtle);
 }
 
-.docs-ai-providers {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 1.25rem;
-  margin: 1.5rem 0;
-}
-
-.docs-ai-card {
-  background: var(--claude-bg-elevated);
-  border: 1px solid var(--claude-border);
-  border-radius: 10px;
-  padding: 1.25rem;
-  transition: all 0.2s ease;
-}
-
-.docs-ai-card:hover {
-  border-color: var(--claude-orange);
-  box-shadow: 0 4px 16px var(--claude-orange-dim);
-  transform: translateY(-2px);
-}
-
-.docs-ai-card h4 {
-  font-size: 1.15rem;
-  color: var(--claude-orange);
-  margin: 0 0 0.5rem 0;
-  font-family: 'Source Serif 4', Georgia, serif !important;
-}
-
-.docs-ai-card p {
-  font-size: 0.95rem;
-  color: var(--claude-text-muted);
-  margin: 0 0 0.75rem 0;
-  font-family: 'Source Serif 4', Georgia, serif !important;
-  font-weight: 400;
-}
-
-.docs-ai-card ul {
-  margin: 0;
-  padding-left: 1.25rem;
-  font-size: 0.9rem;
-  font-family: 'Source Serif 4', Georgia, serif !important;
-  font-weight: 400;
-}
-
-.docs-ai-card li {
-  margin-bottom: 0.35rem;
-  color: var(--claude-text-secondary);
-  font-family: 'Source Serif 4', Georgia, serif !important;
-  font-weight: 400;
-}
-
 .docs-shortcuts-table {
   width: 100%;
   border-collapse: collapse;
@@ -553,8 +502,7 @@
     font-size: 1.2rem;
   }
 
-  .docs-profile-grid,
-  .docs-ai-providers {
+  .docs-profile-grid {
     grid-template-columns: 1fr;
   }
 

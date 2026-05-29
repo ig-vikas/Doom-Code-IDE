@@ -633,11 +633,7 @@ export const clionDarcula: EditorColorScheme = {
       'editorUnnecessaryCode.border': '#00000000',
 
       // ─────────────────────────────────────────────
-      //  GHOST TEXT (inline suggestions / AI assist)
       // ─────────────────────────────────────────────
-      'editorGhostText.foreground': '#FFFFFF40',
-      'editorGhostText.background': '#00000000',
-      'editorGhostText.border': '#00000000',
 
       // ─────────────────────────────────────────────
       //  GUTTER

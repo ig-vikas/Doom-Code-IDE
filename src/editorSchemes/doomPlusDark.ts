@@ -545,10 +545,6 @@ export const doomPlusDark: EditorColorScheme = {
       'editorUnnecessaryCode.opacity': '#000000AA',
       'editorUnnecessaryCode.border': '#00000000',
 
-      // ─── Ghost text (inline suggestions) ───────
-      'editorGhostText.foreground': '#FFFFFF56',
-      'editorGhostText.background': '#00000000',
-      'editorGhostText.border': '#00000000',
 
       // ─── Gutter ────────────────────────────────
       'editorGutter.background': '#1E1E1E',

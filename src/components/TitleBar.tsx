@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { VscChromeMinimize, VscChromeMaximize, VscChromeRestore, VscChromeClose, VscAdd, VscRemove } from 'react-icons/vsc';
 import { useSolveCounterStore } from '../stores/solveCounterStore';
-import AIStatusBar from './ai/AIStatusBar';
 import RadialDoomMenu from './RadialDoomMenu';
 
 export default function TitleBar() {
@@ -62,10 +61,8 @@ export default function TitleBar() {
         </div>
       </div>
 
-      {/* Right: AI Toggle & Window Controls */}
+      {/* Right: Window Controls */}
       <div className="app-titlebar-right">
-        <AIStatusBar />
-
         <div className="floating-window-controls" style={{ position: 'static', background: 'transparent' }}>
           <button type="button" className="titlebar-btn" onClick={handleMinimize} aria-label="Minimize">
             <VscChromeMinimize />

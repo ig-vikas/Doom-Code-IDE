@@ -112,8 +112,4 @@ export const defaultKeybindings: Keybinding[] = [
   // SETTINGS
   { id: 'kb-settings-open', key: 'ctrl+,', command: 'settings.openSettings', label: 'Open Settings' },
   { id: 'kb-help-docs', key: 'f1', command: 'help.openDocs', label: 'Open Docs' },
-
-  // AI
-  { id: 'kb-ai-trigger', key: 'alt+\\', command: 'ai.triggerCompletion', label: 'Trigger AI Completion' },
-  { id: 'kb-ai-toggle', key: 'ctrl+alt+\\', command: 'ai.toggle', label: 'Toggle AI Completion' },
 ];

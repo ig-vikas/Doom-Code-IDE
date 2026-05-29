@@ -197,144 +197,6 @@ export default function DocsPanel() {
             </ul>
           </section>
 
-          {/* AI Features */}
-          <section className="docs-section">
-            <h2>AI-Powered Code Completion</h2>
-            <p>
-              Doom Code integrates with multiple AI providers for intelligent code suggestions.
-            </p>
-
-            <h3>Supported AI Providers</h3>
-            <div className="docs-ai-providers">
-              <div className="docs-ai-card">
-                <h4>OpenRouter</h4>
-                <p>Access to multiple AI models through a unified API</p>
-                <ul>
-                  <li>Claude 3.5 Sonnet</li>
-                  <li>GPT-4</li>
-                  <li>DeepSeek Coder</li>
-                  <li>Custom models</li>
-                </ul>
-              </div>
-              <div className="docs-ai-card">
-                <h4>DeepSeek</h4>
-                <p>Specialized code completion models</p>
-                <ul>
-                  <li>DeepSeek Coder</li>
-                  <li>DeepSeek Chat</li>
-                  <li>DeepSeek Reasoner</li>
-                  <li>FIM (Fill-in-Middle) support</li>
-                </ul>
-              </div>
-              <div className="docs-ai-card">
-                <h4>Google AI</h4>
-                <p>Google's Gemini models</p>
-                <ul>
-                  <li>Gemini 2.0 Flash</li>
-                  <li>Gemini Pro</li>
-                  <li>Configurable safety settings</li>
-                </ul>
-              </div>
-              <div className="docs-ai-card">
-                <h4>Ollama</h4>
-                <p>Local AI models running on your machine</p>
-                <ul>
-                  <li>No API key required</li>
-                  <li>Complete privacy</li>
-                  <li>Offline support</li>
-                  <li>Custom base URL</li>
-                </ul>
-              </div>
-              <div className="docs-ai-card">
-                <h4>Hugging Face</h4>
-                <p>Access to open-source models</p>
-                <ul>
-                  <li>Custom model selection</li>
-                  <li>Inference API</li>
-                  <li>Community models</li>
-                </ul>
-              </div>
-              <div className="docs-ai-card">
-                <h4>Custom Provider</h4>
-                <p>Connect to any OpenAI-compatible API</p>
-                <ul>
-                  <li>Custom base URL</li>
-                  <li>Custom headers</li>
-                  <li>Flexible configuration</li>
-                </ul>
-              </div>
-            </div>
-
-            <h3>Setting Up AI</h3>
-            <ol>
-              <li>Click the AI icon in the top bar or open Settings → AI</li>
-              <li>Select your preferred provider</li>
-              <li>Enter your API key (not required for Ollama)</li>
-              <li>Click "Test Connection" to verify</li>
-              <li>Select a model from the dropdown</li>
-              <li>Enable AI completion toggle</li>
-            </ol>
-
-            <h3>Using AI Completion</h3>
-            <ul>
-              <li><strong>Auto-trigger:</strong> AI suggestions appear automatically after you stop typing (default: 350ms delay)</li>
-              <li><strong>Manual trigger:</strong> Press <code>Alt+\</code> to request a suggestion immediately</li>
-              <li><strong>Accept:</strong> Press <code>Tab</code> to accept the suggestion</li>
-              <li><strong>Reject:</strong> Press <code>Esc</code> to dismiss the suggestion</li>
-              <li><strong>Partial accept:</strong> Press <code>Ctrl+→</code> to accept word by word</li>
-            </ul>
-
-            <h3>AI Configuration</h3>
-            <p>Fine-tune AI behavior in Settings → AI:</p>
-            <ul>
-              <li><strong>Completion Settings:</strong> Auto-trigger, delay, max tokens, temperature, top-p</li>
-              <li><strong>Context Settings:</strong> Max context lines, include open files, file tree, imports</li>
-              <li><strong>UI Settings:</strong> Ghost text opacity, show token count, cost estimates</li>
-            </ul>
-
-            <h3>AI Activity Log</h3>
-            <p>
-              Monitor AI requests and responses in the Activity Log tab:
-            </p>
-            <ul>
-              <li>Request timestamps and details</li>
-              <li>Success/error status</li>
-              <li>Token usage and estimated costs</li>
-              <li>Accepted/rejected completion statistics</li>
-            </ul>
-
-            <h3>Common AI Errors</h3>
-            <div className="docs-error-section">
-              <h4>No API Key</h4>
-              <p><strong>Solution:</strong> Enter your API key in AI Settings and click "Test Connection"</p>
-
-              <h4>Connection Failed</h4>
-              <p><strong>Solution:</strong> Check your internet connection, verify API key is valid, ensure provider service is available</p>
-
-              <h4>Rate Limit Exceeded</h4>
-              <p><strong>Solution:</strong> Wait before making more requests, upgrade your API plan, or switch to a different provider</p>
-
-              <h4>Invalid Model</h4>
-              <p><strong>Solution:</strong> Select a valid model from the dropdown, or verify custom model ID is correct</p>
-
-              <h4>Context Too Large</h4>
-              <p><strong>Solution:</strong> Reduce max context lines in Context Settings, or select a model with larger context window</p>
-            </div>
-
-            <h3>AI Statistics</h3>
-            <p>
-              Track your AI usage with built-in statistics:
-            </p>
-            <ul>
-              <li><strong>Total Requests:</strong> Number of completion requests made</li>
-              <li><strong>Total Tokens:</strong> Cumulative token usage across all requests</li>
-              <li><strong>Total Cost:</strong> Estimated cost based on provider pricing</li>
-              <li><strong>Accepted Completions:</strong> Number of suggestions you accepted</li>
-              <li><strong>Rejected Completions:</strong> Number of suggestions you dismissed</li>
-              <li><strong>Acceptance Rate:</strong> Percentage of accepted vs total suggestions</li>
-            </ul>
-          </section>
-
           {/* Editor Features */}
           <section className="docs-section">
             <h2>Editor Features</h2>
@@ -486,15 +348,6 @@ export default function DocsPanel() {
               </tbody>
             </table>
 
-            <h3>AI Completion</h3>
-            <table className="docs-shortcuts-table">
-              <tbody>
-                <tr><td><code>Alt+\</code></td><td>Trigger AI Completion</td></tr>
-                <tr><td><code>Tab</code></td><td>Accept Suggestion</td></tr>
-                <tr><td><code>Esc</code></td><td>Reject Suggestion</td></tr>
-                <tr><td><code>Ctrl+→</code></td><td>Partial Accept</td></tr>
-              </tbody>
-            </table>
           </section>
 
           {/* Terminal */}
@@ -534,7 +387,6 @@ export default function DocsPanel() {
               <li>Add test cases in the Test Cases panel</li>
               <li>Press <code>Ctrl+Alt+T</code> to run all tests</li>
               <li>Verify verdicts and execution times</li>
-              <li>Use AI completion for boilerplate code</li>
             </ol>
 
             <h3>Performance Tips</h3>
@@ -543,7 +395,6 @@ export default function DocsPanel() {
               <li>Use "Competitive" build profile for fastest compilation</li>
               <li>Enable auto-save to prevent data loss</li>
               <li>Close unused tabs to reduce memory usage</li>
-              <li>Use Ollama for local AI without network latency</li>
             </ul>
 
             <h3>Customization Tips</h3>
@@ -551,7 +402,6 @@ export default function DocsPanel() {
               <li>Create custom build profiles for specific contest platforms</li>
               <li>Set up snippets for frequently used algorithms</li>
               <li>Customize keybindings in Settings → Keybindings</li>
-              <li>Adjust AI trigger delay based on your typing speed</li>
               <li>Use custom themes to reduce eye strain</li>
             </ul>
           </section>
@@ -570,15 +420,6 @@ export default function DocsPanel() {
 
               <h4>Execution Fails</h4>
               <p><strong>Solution:</strong> Check for runtime errors, verify input format, ensure executable has proper permissions</p>
-            </div>
-
-            <h3>AI Issues</h3>
-            <div className="docs-error-section">
-              <h4>No Suggestions Appearing</h4>
-              <p><strong>Solution:</strong> Enable AI toggle, verify API key, check auto-trigger is enabled, try manual trigger with Alt+\</p>
-
-              <h4>Slow Responses</h4>
-              <p><strong>Solution:</strong> Reduce max context lines, use faster model, check network connection, consider using Ollama locally</p>
             </div>
 
             <h3>General Issues</h3>
@@ -607,10 +448,7 @@ export default function DocsPanel() {
               simplicity, and customization. With a lightweight footprint of just 13 MB, it provides
               a powerful development environment without the bloat.
             </p>
-            <p>
-              95% of the core code is auto-generated by AI agents, continuously optimized through
-              human-in-the-loop feedback.
-            </p>
+
           </section>
 
           {/* Open Source & Customization */}
@@ -688,10 +526,7 @@ export default function DocsPanel() {
                 <h4>⚙️ Build Profiles</h4>
                 <p>Add compiler configurations for different platforms</p>
               </div>
-              <div className="docs-custom-item">
-                <h4>🤖 AI Providers</h4>
-                <p>Integrate additional AI services and models</p>
-              </div>
+
               <div className="docs-custom-item">
                 <h4>📝 Code Templates</h4>
                 <p>Add language support and custom templates</p>

@@ -1,15 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useEditorStore, useBuildStore, useThemeStore, useUIStore } from '../stores';
-import { useSolveCounterStore } from '../stores/solveCounterStore';
 import type { SplitNode } from '../types';
 import {
   VscWarning,
   VscError,
-  VscBug,
-  VscAdd,
-  VscRemove,
 } from 'react-icons/vsc';
-import AIDebugPanel from './ai/AIDebugPanel';
 
 function useRollingCount(target: number): number {
   const [value, setValue] = useState(target);
@@ -44,13 +39,8 @@ export default function StatusBar() {
   const currentTheme = useThemeStore((s) => s.currentTheme);
   const saveIndicatorState = useUIStore((s) => s.saveIndicatorState);
   const resetSavingIndicator = useUIStore((s) => s.resetSavingIndicator);
-  const todayCount = useSolveCounterStore((s) => s.todayCount);
-  const increment = useSolveCounterStore((s) => s.increment);
-  const decrement = useSolveCounterStore((s) => s.decrement);
-
   const [warningFlash, setWarningFlash] = useState(false);
   const [errorFlash, setErrorFlash] = useState(false);
-  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
 
   const warningValue = useRollingCount(warningCount);
   const errorValue = useRollingCount(errorCount);
@@ -86,8 +76,7 @@ export default function StatusBar() {
   }, [activeGroupId, layout]);
 
   return (
-    <>
-      <div className={`statusbar ${compiling || running ? 'busy' : ''}`}>
+    <div className={`statusbar ${compiling || running ? 'busy' : ''}`}>
         <div className="statusbar-left">
           {(compiling || running) ? (
             <div className="statusbar-item accent status-enter">
@@ -103,21 +92,6 @@ export default function StatusBar() {
             <VscError />
             <span>{errorValue}</span>
           </div>
-          <button 
-            className="statusbar-item statusbar-button" 
-            onClick={() => setDebugPanelOpen(!debugPanelOpen)}
-            title="AI Debug Panel"
-            style={{ 
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              background: debugPanelOpen ? 'var(--bg-highlight)' : 'transparent',
-            }}
-          >
-            <VscBug />
-            <span>AI Debug</span>
-          </button>
         </div>
 
         <div className="statusbar-right">
@@ -145,9 +119,7 @@ export default function StatusBar() {
             <span>UTF-8</span>
           </div>
         </div>
-      </div>
-      {debugPanelOpen && <AIDebugPanel onClose={() => setDebugPanelOpen(false)} />}
-    </>
+    </div>
   );
 }
 

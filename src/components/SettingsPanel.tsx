@@ -10,7 +10,6 @@ import {
   VscEdit,
   VscFiles,
   VscGraph,
-  VscHubot,
   VscKeyboardTab,
   VscPaintcan,
   VscTerminal,
@@ -18,9 +17,8 @@ import {
 } from 'react-icons/vsc';
 import { defaultKeybindings } from '../config/defaultKeybindings';
 import { EDITOR_FONT_OPTIONS, isAllowedEditorFontFamily } from '../config/lockedAppearance';
-import AISettingsPanel from './ai/AISettingsPanel';
 
-type SettingsCategory = 'editor' | 'appearance' | 'build' | 'terminal' | 'files' | 'ai' | 'keybindings' | 'statistics';
+type SettingsCategory = 'editor' | 'appearance' | 'build' | 'terminal' | 'files' | 'keybindings' | 'statistics';
 
 interface SettingsCategoryDefinition {
   id: SettingsCategory;
@@ -36,7 +34,6 @@ const categories: SettingsCategoryDefinition[] = [
   { id: 'build', label: 'Build', caption: 'Compiler + runner', accent: 'var(--accent-orange)', icon: VscTools },
   { id: 'terminal', label: 'Terminal', caption: 'Shell + output', accent: 'var(--accent-green)', icon: VscTerminal },
   { id: 'files', label: 'Files', caption: 'Save + formatting', accent: 'var(--accent-yellow)', icon: VscFiles },
-  { id: 'ai', label: 'AI', caption: 'Completion + prompts', accent: 'var(--accent-purple)', icon: VscHubot },
   { id: 'keybindings', label: 'Keybindings', caption: 'Shortcuts + remaps', accent: 'var(--accent-cyan)', icon: VscKeyboardTab },
   { id: 'statistics', label: 'Statistics', caption: 'Progress + streaks', accent: 'var(--accent-teal)', icon: VscGraph },
 ];
@@ -70,7 +67,6 @@ export default function SettingsPanel() {
           {activeCategory === 'build' && <BuildSettings />}
           {activeCategory === 'terminal' && <TerminalSettings />}
           {activeCategory === 'files' && <FilesSettings />}
-          {activeCategory === 'ai' && <AISettingsPanel />}
           {activeCategory === 'keybindings' && <KeybindingsInfo />}
           {activeCategory === 'statistics' && <SolveStats />}
         </div>
@@ -105,8 +101,8 @@ const S_CX = 0;
 const S_CY = 220;
 const S_INNER_R = 40;
 const S_OUTER_R = 175;
-const S_START_DEG = -80;
-const S_END_DEG = 80;
+const S_START_DEG = -86;
+const S_END_DEG = 86;
 const S_GAP = 1.8;
 const S_COLLAPSED_R = 26;
 
@@ -139,7 +135,7 @@ function SettingsSidebar({ activeCategory, onChangeCategory }: { activeCategory:
       const end = start + segAngle;
       const mid = (start + end) / 2;
       const iconR = S_INNER_R + (S_OUTER_R - S_INNER_R) * 0.32;
-      const labelR = S_INNER_R + (S_OUTER_R - S_INNER_R) * 0.72;
+      const labelR = S_INNER_R + (S_OUTER_R - S_INNER_R) * 0.74;
       return {
         ...cat,
         startDeg: start,
@@ -323,10 +319,10 @@ function SettingsSidebar({ activeCategory, onChangeCategory }: { activeCategory:
                     textAnchor="middle"
                     dominantBaseline="central"
                     fill={isActive ? '#ffffff' : isHovered ? 'var(--text-primary)' : 'var(--text-secondary)'}
-                    fontSize="11"
+                    fontSize="10.5"
                     fontWeight={isActive ? 700 : 500}
                     fontFamily="Inter, system-ui, sans-serif"
-                    letterSpacing="0.6px"
+                    letterSpacing="0"
                     transform={`rotate(${seg.midDeg}, ${seg.labelPt.x}, ${seg.labelPt.y})`}
                     style={{ transition: 'fill 180ms ease', pointerEvents: 'none', userSelect: 'none' }}
                   >
@@ -516,7 +512,7 @@ function EditorSettings() {
             <option value="smooth">Smooth</option>
             <option value="phase">Phase</option>
             <option value="expand">Expand</option>
-            <option value="solid">Solid</option>
+            <option value="solid">Solid (No Blinking)</option>
           </select>
         </SettingRow>
         <SettingRow label="Smooth Scrolling" description="Enable smooth scrolling">
@@ -1051,114 +1047,447 @@ function formatKey(key: string): string {
     .join(' + ');
 }
 
+type ActivityYearSelection = 'rolling' | string;
+
+interface ActivityDay {
+  date: Date;
+  key: string;
+  count: number;
+  inRange: boolean;
+  isToday: boolean;
+}
+
+interface ActivityColumn {
+  startKey: string;
+  days: ActivityDay[];
+}
+
+function startOfLocalDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function localDateKey(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function parseLocalDateKey(key: string): Date | null {
+  const parts = key.split('-').map(Number);
+  if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) return null;
+  const [year, month, day] = parts;
+  return new Date(year, month - 1, day);
+}
+
+function addDays(date: Date, amount: number): Date {
+  const next = startOfLocalDay(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function addMonthsClamped(date: Date, amount: number): Date {
+  const next = startOfLocalDay(date);
+  const originalDay = next.getDate();
+  next.setDate(1);
+  next.setMonth(next.getMonth() + amount);
+  const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+  next.setDate(Math.min(originalDay, lastDay));
+  return next;
+}
+
+function addYearsClamped(date: Date, amount: number): Date {
+  const next = startOfLocalDay(date);
+  const originalMonth = next.getMonth();
+  next.setFullYear(next.getFullYear() + amount);
+  if (next.getMonth() !== originalMonth) next.setDate(0);
+  return next;
+}
+
+function startOfActivityWeek(date: Date): Date {
+  const start = startOfLocalDay(date);
+  start.setDate(start.getDate() - start.getDay());
+  return start;
+}
+
+function formatActivityDate(date: Date): string {
+  return date.toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatHeatmapTooltipDate(date: Date): string {
+  return [
+    String(date.getDate()).padStart(2, '0'),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    date.getFullYear(),
+  ].join('/');
+}
+
+function pluralProblems(count: number): string {
+  return `${count} problem${count === 1 ? '' : 's'}`;
+}
+
+function pluralDays(count: number): string {
+  return `${count} day${count === 1 ? '' : 's'}`;
+}
+
+function getSolveCount(records: Record<string, { count: number }>, date: Date): number {
+  return records[localDateKey(date)]?.count ?? 0;
+}
+
+function getFirstSolveDate(records: Record<string, { count: number }>, fallback: Date): Date {
+  const dates = Object.entries(records)
+    .filter(([, record]) => record.count > 0)
+    .map(([date]) => parseLocalDateKey(date))
+    .filter((date): date is Date => Boolean(date))
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  return dates[0] ? startOfLocalDay(dates[0]) : fallback;
+}
+
+function getActivityYears(records: Record<string, { count: number }>, today: Date): number[] {
+  const currentYear = today.getFullYear();
+  const years = new Set<number>();
+
+  for (let year = currentYear; year >= 2026; year--) {
+    years.add(year);
+  }
+
+  Object.entries(records).forEach(([key, record]) => {
+    if (record.count <= 0) return;
+    const date = parseLocalDateKey(key);
+    if (date) years.add(date.getFullYear());
+  });
+
+  return Array.from(years).sort((a, b) => b - a);
+}
+
+function getRangeTotal(records: Record<string, { count: number }>, start: Date, end: Date): number {
+  return Object.entries(records).reduce((total, [key, record]) => {
+    const date = parseLocalDateKey(key);
+    if (!date) return total;
+    return date >= start && date <= end ? total + record.count : total;
+  }, 0);
+}
+
+function getMaxStreak(records: Record<string, { count: number }>, start: Date, end: Date): number {
+  let current = 0;
+  let best = 0;
+
+  for (let day = startOfLocalDay(start); day <= end; day = addDays(day, 1)) {
+    if (getSolveCount(records, day) > 0) {
+      current += 1;
+      best = Math.max(best, current);
+    } else {
+      current = 0;
+    }
+  }
+
+  return best;
+}
+
+function getActivityLevel(count: number): number {
+  if (count <= 0) return 0;
+  if (count <= 2) return 1;
+  if (count <= 5) return 2;
+  if (count <= 9) return 3;
+  return 4;
+}
+
 function SolveStats() {
   const records = useSolveCounterStore((s) => s.records);
   const todayCount = useSolveCounterStore((s) => s.todayCount);
-  const [view, setView] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [activityYear, setActivityYear] = useState<ActivityYearSelection>('rolling');
+  const [heatmapTooltip, setHeatmapTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
 
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const today = useMemo(() => startOfLocalDay(new Date()), []);
+  const todayKey = localDateKey(today);
+  const todaySolves = records[todayKey]?.count ?? todayCount;
 
-  const dailyData = useMemo(() => {
-    const entries = Object.entries(records)
-      .map(([date, r]) => ({ date, count: r.count }))
-      .sort((a, b) => b.date.localeCompare(a.date));
-    // Show last 30 days (fill gaps with 0)
-    const days: { date: string; count: number }[] = [];
-    for (let i = 0; i < 30; i++) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
-      const found = entries.find((e) => e.date === key);
-      days.push({ date: key, count: found ? found.count : 0 });
-    }
-    return days;
-  }, [records]);
+  const stats = useMemo(() => {
+    const firstSolveDate = getFirstSolveDate(records, today);
+    const lastYearStart = addYearsClamped(today, -1);
+    const lastMonthStart = addMonthsClamped(today, -1);
+    const selectedYear = activityYear === 'rolling' ? null : Number(activityYear);
+    const heatmapStart = selectedYear ? new Date(selectedYear, 0, 1) : lastYearStart;
+    const heatmapEnd = selectedYear ? new Date(selectedYear, 11, 31) : today;
+    const heatmapGridStart = startOfActivityWeek(heatmapStart);
 
-  const weeklyData = useMemo(() => {
-    // Group by ISO week, last 12 weeks
-    const weeks: { label: string; count: number }[] = [];
-    for (let w = 0; w < 12; w++) {
-      let total = 0;
-      const weekStart = new Date();
-      weekStart.setDate(weekStart.getDate() - weekStart.getDay() - w * 7);
-      for (let d = 0; d < 7; d++) {
-        const day = new Date(weekStart);
-        day.setDate(day.getDate() + d);
-        const key = day.toISOString().slice(0, 10);
-        if (records[key]) total += records[key].count;
+    const columns: ActivityColumn[] = [];
+    for (let columnStart = heatmapGridStart; columnStart <= heatmapEnd; columnStart = addDays(columnStart, 7)) {
+      const days: ActivityDay[] = [];
+      for (let row = 0; row < 7; row++) {
+        const date = addDays(columnStart, row);
+        const key = localDateKey(date);
+        days.push({
+          date,
+          key,
+          count: records[key]?.count ?? 0,
+          inRange: date >= heatmapStart && date <= heatmapEnd,
+          isToday: key === todayKey,
+        });
       }
-      const endOfWeek = new Date(weekStart);
-      endOfWeek.setDate(endOfWeek.getDate() + 6);
-      const label = `${weekStart.toLocaleDateString('en', { month: 'short', day: 'numeric' })} - ${endOfWeek.toLocaleDateString('en', { month: 'short', day: 'numeric' })}`;
-      weeks.push({ label, count: total });
+      columns.push({ startKey: localDateKey(columnStart), days });
     }
-    return weeks;
-  }, [records]);
 
-  const monthlyData = useMemo(() => {
-    const months: { label: string; count: number }[] = [];
-    for (let m = 0; m < 12; m++) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - m);
-      const year = d.getFullYear();
-      const month = d.getMonth();
-      const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
-      let total = 0;
-      Object.entries(records).forEach(([date, r]) => {
-        if (date.startsWith(prefix)) total += r.count;
-      });
-      months.push({ label: d.toLocaleDateString('en', { month: 'long', year: 'numeric' }), count: total });
-    }
-    return months;
-  }, [records]);
+    let previousMonth = -1;
+    const monthLabels = columns.map((column, index) => {
+      const monthStartDay = column.days.find((day) => day.inRange && day.date.getDate() <= 7);
+      if (!monthStartDay) return null;
+      const month = monthStartDay.date.getMonth();
+      if (month === previousMonth) return null;
+      previousMonth = month;
+      return {
+        column: index,
+        label: monthStartDay.date.toLocaleDateString('en', { month: 'short' }),
+      };
+    }).filter((label): label is { column: number; label: string } => Boolean(label));
 
-  const currentData = view === 'daily' ? dailyData : view === 'weekly' ? weeklyData : monthlyData;
-  const maxCount = Math.max(1, ...currentData.map((d) => d.count));
-  const totalAll = Object.values(records).reduce((s, r) => s + r.count, 0);
-  const labelKey = view === 'daily' ? 'date' : 'label';
+    return {
+      columns,
+      activityYears: getActivityYears(records, today),
+      firstSolveDate,
+      heatmapEnd,
+      heatmapStart,
+      lastYearStart,
+      lastMonthStart,
+      monthLabels,
+      totalAll: Object.values(records).reduce((sum, record) => sum + record.count, 0),
+      totalLastYear: getRangeTotal(records, lastYearStart, today),
+      totalLastMonth: getRangeTotal(records, lastMonthStart, today),
+      maxStreakAll: getMaxStreak(records, firstSolveDate, today),
+      maxStreakLastYear: getMaxStreak(records, lastYearStart, today),
+      maxStreakLastMonth: getMaxStreak(records, lastMonthStart, today),
+    };
+  }, [activityYear, records, today, todayKey]);
+
+  const trend = useMemo(() => {
+    const data = Array.from({ length: 10 }, (_, index) => {
+      const date = addDays(today, index - 9);
+      return {
+        key: localDateKey(date),
+        label: index === 9 ? 'Today' : date.toLocaleDateString('en', { month: 'short', day: 'numeric' }),
+        shortLabel: index === 9 ? 'Today' : date.toLocaleDateString('en', { day: 'numeric' }),
+        count: getSolveCount(records, date),
+      };
+    });
+
+    const lastWeekCounts = Array.from({ length: 7 }, (_, index) => getSolveCount(records, addDays(today, -7 + index)));
+    const lastWeekAverage = lastWeekCounts.reduce((sum, count) => sum + count, 0) / lastWeekCounts.length;
+    const baseline = Math.ceil(lastWeekAverage);
+    const delta = todaySolves - baseline;
+    const width = 640;
+    const height = 230;
+    const pad = { top: 22, right: 28, bottom: 42, left: 38 };
+    const innerWidth = width - pad.left - pad.right;
+    const innerHeight = height - pad.top - pad.bottom;
+    const maxValue = Math.max(1, baseline, ...data.map((item) => item.count));
+    const points = data.map((item, index) => {
+      const x = pad.left + (innerWidth / Math.max(1, data.length - 1)) * index;
+      const y = pad.top + innerHeight - (item.count / maxValue) * innerHeight;
+      return { ...item, x, y };
+    });
+    const linePoints = points.map((point) => `${point.x},${point.y}`).join(' ');
+    const areaPoints = [
+      `${points[0]?.x ?? pad.left},${pad.top + innerHeight}`,
+      linePoints,
+      `${points[points.length - 1]?.x ?? pad.left + innerWidth},${pad.top + innerHeight}`,
+    ].join(' ');
+    const baselineY = pad.top + innerHeight - (baseline / maxValue) * innerHeight;
+
+    return {
+      data,
+      points,
+      linePoints,
+      areaPoints,
+      baseline,
+      delta,
+      deltaTone: delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat',
+      baselineY,
+      width,
+      height,
+      pad,
+      innerHeight,
+      maxValue,
+    };
+  }, [records, today, todaySolves]);
+
+  const moveHeatmapTooltip = useCallback((event: React.MouseEvent, text: string) => {
+    setHeatmapTooltip({
+      text,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }, []);
 
   return (
-    <div className="settings-section">
-      <h3>Solve Statistics</h3>
-      <div className="stats-summary">
-        <div className="stats-card">
-          <div className="stats-card-value">{todayCount}</div>
-          <div className="stats-card-label">Today</div>
+    <div className="settings-section solve-stats">
+      <div className="stats-page-heading">
+        <div>
+          <div className="settings-section-title">Solve Statistics</div>
+          <div className="stats-page-subtitle">Daily solve activity and short-term frequency.</div>
         </div>
-        <div className="stats-card">
-          <div className="stats-card-value">{dailyData.slice(0, 7).reduce((s, d) => s + d.count, 0)}</div>
-          <div className="stats-card-label">This Week</div>
-        </div>
-        <div className="stats-card">
-          <div className="stats-card-value">{totalAll}</div>
-          <div className="stats-card-label">All Time</div>
+        <div className="stats-today-pill">
+          <span>{todaySolves}</span>
+          <small>today</small>
         </div>
       </div>
 
-      <div className="stats-tabs">
-        <button className={`stats-tab ${view === 'daily' ? 'active' : ''}`} onClick={() => setView('daily')}>Daily</button>
-        <button className={`stats-tab ${view === 'weekly' ? 'active' : ''}`} onClick={() => setView('weekly')}>Weekly</button>
-        <button className={`stats-tab ${view === 'monthly' ? 'active' : ''}`} onClick={() => setView('monthly')}>Monthly</button>
-      </div>
+      <div className="cf-activity-card">
+        <div className="cf-activity-toolbar">
+          <select
+            className="cf-activity-select"
+            aria-label="Activity year"
+            value={activityYear}
+            onChange={(event) => setActivityYear(event.target.value)}
+          >
+            <option value="rolling">Choose year</option>
+            {stats.activityYears.map((year) => (
+              <option key={year} value={String(year)}>
+                {year}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <div className="stats-chart">
-        {currentData.map((item, i) => {
-          const label = 'date' in item ? item.date : (item as { label: string }).label;
-          const isToday = 'date' in item && item.date === todayKey;
-          return (
-            <div key={i} className={`stats-bar-row ${isToday ? 'today' : ''}`}>
-              <span className="stats-bar-label">{label}</span>
-              <div className="stats-bar-track">
-                <div
-                  className="stats-bar-fill"
-                  style={{ width: `${(item.count / maxCount) * 100}%` }}
-                />
-              </div>
-              <span className="stats-bar-count">{item.count}</span>
+        <div className="cf-heatmap-shell">
+          <div className="cf-month-labels" style={{ gridTemplateColumns: `repeat(${stats.columns.length}, 12px)` }}>
+            {stats.monthLabels.map((label) => (
+              <span
+                key={`${label.label}-${label.column}`}
+                className="cf-month-label"
+                style={{ gridColumnStart: label.column + 1 }}
+              >
+                {label.label}
+              </span>
+            ))}
+          </div>
+
+          <div className="cf-heatmap-body">
+            <div className="cf-weekday-labels" aria-hidden="true">
+              <span />
+              <span>Mon</span>
+              <span />
+              <span>Wed</span>
+              <span />
+              <span>Fri</span>
+              <span />
             </div>
-          );
-        })}
+
+            <div className="cf-heatmap-grid" style={{ gridTemplateColumns: `repeat(${stats.columns.length}, 12px)` }}>
+              {stats.columns.map((column) => (
+                <div className="cf-heatmap-week" key={column.startKey}>
+                  {column.days.map((day) => {
+                    const level = day.inRange ? getActivityLevel(day.count) : 0;
+                    const tooltipText = `${formatHeatmapTooltipDate(day.date)} : ${day.count} solved`;
+                    const canShowTooltip = day.inRange && day.count > 0;
+                    return (
+                      <span
+                        key={day.key}
+                        className={`cf-heatmap-cell ${day.inRange ? '' : 'outside'} ${day.isToday ? 'today' : ''}`}
+                        data-level={level}
+                        aria-label={tooltipText}
+                        onMouseEnter={(event) => {
+                          if (canShowTooltip) moveHeatmapTooltip(event, tooltipText);
+                        }}
+                        onMouseMove={(event) => {
+                          if (canShowTooltip) moveHeatmapTooltip(event, tooltipText);
+                        }}
+                        onMouseLeave={() => setHeatmapTooltip(null)}
+                      />
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="cf-stats-grid">
+          <div className="cf-stat-block">
+            <strong>{pluralProblems(stats.totalAll)}</strong>
+            <span>solved for all time</span>
+          </div>
+          <div className="cf-stat-block">
+            <strong>{pluralProblems(stats.totalLastYear)}</strong>
+            <span>solved for the last year</span>
+          </div>
+          <div className="cf-stat-block">
+            <strong>{pluralProblems(stats.totalLastMonth)}</strong>
+            <span>solved for the last month</span>
+          </div>
+          <div className="cf-stat-block">
+            <strong>{pluralDays(stats.maxStreakAll)}</strong>
+            <span>in a row max.</span>
+          </div>
+          <div className="cf-stat-block">
+            <strong>{pluralDays(stats.maxStreakLastYear)}</strong>
+            <span>in a row for the last year</span>
+          </div>
+          <div className="cf-stat-block">
+            <strong>{pluralDays(stats.maxStreakLastMonth)}</strong>
+            <span>in a row for the last month</span>
+          </div>
+        </div>
       </div>
+
+      <div className="frequency-card">
+        <div className="frequency-header">
+          <div>
+            <div className="frequency-title">Last 10 Days Frequency</div>
+            <div className="frequency-subtitle">Today's solve count vs ceil(last week's average)</div>
+          </div>
+          <div className={`frequency-delta ${trend.deltaTone}`}>
+            <span>{trend.delta > 0 ? '▲' : trend.delta < 0 ? '▼' : '•'}</span>
+            <strong>{trend.delta > 0 ? `+${trend.delta}` : trend.delta}</strong>
+            <small>vs {trend.baseline}</small>
+          </div>
+        </div>
+
+        <div className="frequency-chart-wrap">
+          <svg className="frequency-chart" viewBox={`0 0 ${trend.width} ${trend.height}`} role="img" aria-label="Last 10 days solve frequency line chart">
+            {[0, 0.5, 1].map((ratio) => {
+              const y = trend.pad.top + trend.innerHeight * ratio;
+              return <line key={ratio} x1={trend.pad.left} y1={y} x2={trend.width - trend.pad.right} y2={y} className="frequency-grid-line" />;
+            })}
+            <line
+              x1={trend.pad.left}
+              y1={trend.baselineY}
+              x2={trend.width - trend.pad.right}
+              y2={trend.baselineY}
+              className="frequency-baseline"
+            />
+            <text x={trend.width - trend.pad.right} y={Math.max(14, trend.baselineY - 6)} className="frequency-baseline-label" textAnchor="end">
+              ceil avg {trend.baseline}
+            </text>
+            <polygon points={trend.areaPoints} className="frequency-area" />
+            <polyline points={trend.linePoints} className="frequency-line" />
+            {trend.points.map((point) => (
+              <g key={point.key}>
+                <circle className={`frequency-point ${point.key === todayKey ? 'today' : ''}`} cx={point.x} cy={point.y} r={point.key === todayKey ? 5 : 3.5} />
+                <text x={point.x} y={trend.height - 16} className="frequency-x-label" textAnchor="middle">
+                  {point.shortLabel}
+                </text>
+                <text x={point.x} y={Math.max(12, point.y - 9)} className="frequency-value-label" textAnchor="middle">
+                  {point.count}
+                </text>
+              </g>
+            ))}
+          </svg>
+        </div>
+      </div>
+
+      {heatmapTooltip && (
+        <div
+          className="cf-heatmap-tooltip"
+          style={{
+            left: heatmapTooltip.x,
+            top: heatmapTooltip.y,
+          }}
+        >
+          {heatmapTooltip.text}
+        </div>
+      )}
     </div>
   );
 }

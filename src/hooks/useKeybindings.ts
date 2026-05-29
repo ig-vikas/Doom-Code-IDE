@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { useKeybindingStore } from '../stores/keybindingStore';
-import { useAIStore } from '../stores/aiStore';
 import { useBuildStore } from '../stores/buildStore';
 import { useUIStore } from '../stores/uiStore';
 import { executeCommand, hasCommand } from '../services/commandService';
@@ -120,7 +119,6 @@ const GLOBAL_COMMANDS = new Set([
   'view.toggleSidebar', 'view.toggleTerminal', 'view.toggleFullscreen',
   'view.zoomIn', 'view.zoomOut', 'view.zoomReset',
   'settings.openSettings',
-  'ai.triggerCompletion', 'ai.toggle',
   'build.compileAndRun', 'build.compileOnly', 'build.runOnly',
   'build.build', 'build.killProcess', 'build.runAllTestCases',
 ]);
@@ -130,11 +128,6 @@ const MONACO_INPUT_COMMANDS = new Set([
   'edit.insertLineAfter',
   'edit.insertLineBefore',
 ]);
-
-function isCtrlEnter(e: KeyboardEvent): boolean {
-  const eventKey = normalizeKeyToken(e.key.toLowerCase());
-  return (eventKey === 'enter' || e.code === 'NumpadEnter') && (e.ctrlKey || e.metaKey) && !e.altKey;
-}
 
 function shouldPrioritizeImmediateCommand(command: string): boolean {
   if (command !== 'build.killProcess') {
@@ -228,18 +221,6 @@ export function useGlobalKeybindings() {
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable
       );
-
-      // Keep Ctrl+Enter available for AI acceptance when inline suggestion is visible.
-      if (isMonacoInput && isCtrlEnter(e)) {
-        const aiState = useAIStore.getState();
-        if (
-          aiState.config.enabled &&
-          aiState.config.completion.acceptKey === 'ctrl+enter' &&
-          !!aiState.pendingSuggestion
-        ) {
-          return;
-        }
-      }
 
       const isAllowed = (command: string) => {
         if (!isInput) {

@@ -11,11 +11,10 @@ import SettingsPanel from './components/SettingsPanel';
 import DocsPanel from './components/DocsPanel';
 import StartupOverlay from './components/StartupOverlay';
 import BuildProgressBar from './components/BuildProgressBar';
-import { useUIStore, useThemeStore, useSettingsStore, useEditorSchemeStore, useEditorStore, useBuildStore, useAIStore, useFileExplorerStore } from './stores';
+import { useUIStore, useThemeStore, useSettingsStore, useEditorSchemeStore, useEditorStore, useBuildStore } from './stores';
 import { useGlobalKeybindings } from './hooks/useKeybindings';
 import { useResizable } from './hooks/useResizable';
 import { loadConfig } from './services/configService';
-import { aiService } from './services/ai/aiService';
 import {
   initializeCommands,
   saveSession,
@@ -143,8 +142,6 @@ export default function App() {
   const uiFontFamily = useSettingsStore((s) => s.settings.ui.fontFamily);
   const statusBarVisible = useSettingsStore((s) => s.settings.ui.statusBarVisible);
   const activityBarVisible = useSettingsStore((s) => s.settings.ui.activityBarVisible);
-  const ghostOpacity = useAIStore((s) => s.config.ui.ghostTextOpacity);
-  const workspaceRoot = useFileExplorerStore((s) => s.rootPath);
   const setTheme = useThemeStore((s) => s.setTheme);
   const currentTheme = useThemeStore((s) => s.currentTheme);
 
@@ -193,14 +190,6 @@ export default function App() {
       }
 
       try {
-        await useAIStore.getState().loadConfig();
-        await useAIStore.getState().hydrateSecureState();
-        await aiService.initialize();
-      } catch (error) {
-        console.error('Failed to initialize AI settings during startup:', error);
-      }
-
-      try {
         try {
           const settings = await loadConfig<AppSettings>('settings.json');
           if (settings && !cancelled) {
@@ -237,13 +226,6 @@ export default function App() {
       window.clearTimeout(startupGuard);
     };
   }, [setTheme]);
-
-  useEffect(() => {
-    if (!workspaceRoot) {
-      return;
-    }
-    void useAIStore.getState().loadConfig();
-  }, [workspaceRoot]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -326,13 +308,6 @@ export default function App() {
       root.style.setProperty('--app-scale', '1');
     };
   }, [zoomLevel]);
-
-  useEffect(() => {
-    const safeGhostOpacity = Number.isFinite(ghostOpacity)
-      ? Math.min(0.95, Math.max(0.2, ghostOpacity))
-      : 0.5;
-    document.documentElement.style.setProperty('--ai-ghost-opacity', `${safeGhostOpacity}`);
-  }, [ghostOpacity]);
 
   useEffect(() => {
     if (uiFontFamily) {

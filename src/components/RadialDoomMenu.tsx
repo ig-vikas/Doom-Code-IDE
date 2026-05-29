@@ -3,7 +3,7 @@ import { defaultMenus } from '../config/defaultMenus';
 import { executeCommand } from '../services/commandService';
 import type { MenuDefinition } from '../types';
 
-import appIcon from '/src-tauri/icons/icon.png';
+import appIcon from '../../src-tauri/icons/icon.png';
 
 // Icons for each menu category
 const MENU_ICONS: Record<string, JSX.Element> = {
