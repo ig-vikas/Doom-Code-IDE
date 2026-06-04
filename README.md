@@ -35,6 +35,14 @@
 
 ---
 
+## 🪟 Download for Windows
+
+You can download the Windows installer from the latest/top GitHub Release:
+
+[**Download Doom Code for Windows**](https://github.com/ig-vikas/Doom-Code-IDE/releases/latest)
+
+---
+
 ## ⚡ Quick Start (60 Seconds)
 
 Get up and running locally in three quick commands:
@@ -55,6 +63,7 @@ npm run tauri dev
 ---
 
 ## 📖 Table of Contents
+* [🪟 Download for Windows](#-download-for-windows)
 * [🚀 Why Choose Doom Code?](#-why-choose-doom-code)
 * [📸 Screen Showcase](#-screen-showcase)
 * [✨ Core Pillars & Features](#-core-pillars--features)
