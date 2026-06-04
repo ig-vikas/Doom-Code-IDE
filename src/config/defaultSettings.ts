@@ -61,11 +61,6 @@ export const defaultSettings: AppSettings = {
     clearOutputBeforeBuild: true,
     showExecutionTime: true,
   },
-  github: {
-    tokenPool: [],
-    activeTokenIndex: 0,
-    rotateOnRateLimit: true,
-  },
   template: {
     autoInsert: true,
     showAnimation: true,

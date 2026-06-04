@@ -16,10 +16,10 @@
 
 <p align="center">
   <a href="https://github.com/ig-vikas/Doom-Code-IDE/releases">
-    <img src="https://img.shields.io/github/v/release/ig-vikas/Doom-Code-IDE?style=flat-square&logo=github&color=7C3AED" alt="Latest Release">
+    <img src="https://badgen.net/github/release/ig-vikas/Doom-Code-IDE?icon=github&color=7C3AED" alt="Latest Release">
   </a>
   <a href="https://github.com/ig-vikas/Doom-Code-IDE/stargazers">
-    <img src="https://img.shields.io/github/stars/ig-vikas/Doom-Code-IDE?style=flat-square&logo=github&color=F59E0B" alt="GitHub Stars">
+    <img src="https://badgen.net/github/stars/ig-vikas/Doom-Code-IDE?icon=github&color=F59E0B" alt="GitHub Stars">
   </a>
   <a href="https://github.com/ig-vikas/Doom-Code-IDE/issues">
     <img src="https://img.shields.io/github/issues/ig-vikas/Doom-Code-IDE?style=flat-square&logo=github&color=EF4444" alt="GitHub Issues">
@@ -31,10 +31,6 @@
   <img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React">
   <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
   <img src="https://img.shields.io/badge/Rust-2021-orange?style=flat-square&logo=rust&logoColor=white" alt="Rust">
-</p>
-
-<p align="center">
-  <a href="https://github.com/ig-vikas/Doom-Code-IDE/stargazers"><strong>Star Doom Code on GitHub</strong></a>
 </p>
 
 ---
@@ -251,11 +247,6 @@ Preferences are structured within `defaultSettings.ts`. Below is a breakdown of 
     "compilerPath": "g++",
     "defaultProfile": "Doom",
     "saveBeforeBuild": true
-  },
-  "github": {
-    "tokenPool": [],
-    "activeTokenIndex": 0,
-    "rotateOnRateLimit": true
   },
   "terminal": {
     "fontFamily": "JetBrains Mono, monospace",

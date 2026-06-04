@@ -3316,46 +3316,6 @@ g:hover > .radial-sub-key {
   font-size: 1rem;
 }
 
-.settings-textarea {
-  min-width: 280px;
-  min-height: 96px;
-  resize: vertical;
-  line-height: 1.45;
-}
-
-.github-token-pool {
-  font-family: var(--font-mono);
-  font-size: 0.9231rem;
-}
-
-.github-token-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  padding-top: 12px;
-}
-
-.settings-inline-button {
-  padding: 4px 12px;
-  font-size: 0.9231rem;
-  background: var(--bg-intense);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  transition: all var(--transition-fast);
-}
-
-.settings-inline-button:hover:not(:disabled) {
-  border-color: var(--accent-purple);
-  color: var(--accent-purple);
-}
-
-.github-token-count {
-  color: var(--text-muted);
-  font-size: 0.9231rem;
-}
-
 /* Number input */
 .settings-number {
   width: 80px;

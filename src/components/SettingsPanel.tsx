@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect, useRef, useMemo, type CSSProperties }
 import { useSettingsStore, useThemeStore, useUIStore, useBuildStore, useKeybindingStore, useEditorSchemeStore } from '../stores';
 import { useSolveCounterStore } from '../stores/solveCounterStore';
 import { saveConfigIfChanged } from '../services/configService';
-import { normalizeGitHubTokenIndex, parseGitHubTokenPool } from '../services/githubTokenPool';
 import type { AppSettings } from '../types';
 import type { IconType } from 'react-icons';
 import {
@@ -11,7 +10,6 @@ import {
   VscEdit,
   VscFiles,
   VscGraph,
-  VscGithub,
   VscKeyboardTab,
   VscPaintcan,
   VscTerminal,
@@ -20,7 +18,7 @@ import {
 import { defaultKeybindings } from '../config/defaultKeybindings';
 import { EDITOR_FONT_OPTIONS, isAllowedEditorFontFamily } from '../config/lockedAppearance';
 
-type SettingsCategory = 'editor' | 'appearance' | 'build' | 'github' | 'terminal' | 'files' | 'keybindings' | 'statistics';
+type SettingsCategory = 'editor' | 'appearance' | 'build' | 'terminal' | 'files' | 'keybindings' | 'statistics';
 
 interface SettingsCategoryDefinition {
   id: SettingsCategory;
@@ -34,7 +32,6 @@ const categories: SettingsCategoryDefinition[] = [
   { id: 'editor', label: 'Editor', caption: 'Cursor + code flow', accent: 'var(--accent-blue)', icon: VscCode },
   { id: 'appearance', label: 'Appearance', caption: 'Theme + interface', accent: 'var(--accent-pink)', icon: VscPaintcan },
   { id: 'build', label: 'Build', caption: 'Compiler + runner', accent: 'var(--accent-orange)', icon: VscTools },
-  { id: 'github', label: 'GitHub', caption: 'Token pool', accent: 'var(--accent-purple)', icon: VscGithub },
   { id: 'terminal', label: 'Terminal', caption: 'Shell + output', accent: 'var(--accent-green)', icon: VscTerminal },
   { id: 'files', label: 'Files', caption: 'Save + formatting', accent: 'var(--accent-yellow)', icon: VscFiles },
   { id: 'keybindings', label: 'Keybindings', caption: 'Shortcuts + remaps', accent: 'var(--accent-cyan)', icon: VscKeyboardTab },
@@ -68,7 +65,6 @@ export default function SettingsPanel() {
           {activeCategory === 'editor' && <EditorSettings />}
           {activeCategory === 'appearance' && <AppearanceSettings />}
           {activeCategory === 'build' && <BuildSettings />}
-          {activeCategory === 'github' && <GitHubSettings />}
           {activeCategory === 'terminal' && <TerminalSettings />}
           {activeCategory === 'files' && <FilesSettings />}
           {activeCategory === 'keybindings' && <KeybindingsInfo />}
@@ -797,73 +793,6 @@ function BuildSettings() {
       </div>
     </div>
   );
-}
-
-function GitHubSettings() {
-  const settings = useSettingsStore((s) => s.settings.github);
-  const updateGitHub = useSettingsStore((s) => s.updateGitHub);
-  const setGitHubTokenPool = useSettingsStore((s) => s.setGitHubTokenPool);
-  const selectNextToken = useSettingsStore((s) => s.selectNextGitHubToken);
-  const tokenPool = parseGitHubTokenPool(settings.tokenPool);
-  const activeTokenIndex = normalizeGitHubTokenIndex(settings.activeTokenIndex, tokenPool.length);
-
-  return (
-    <div>
-      <div className="settings-section">
-        <div className="settings-section-title">GitHub Tokens</div>
-        <SettingRow label="Token Pool" description="One GitHub token per line, stored locally in settings">
-          <textarea
-            className="settings-textarea github-token-pool"
-            value={tokenPool.join('\n')}
-            placeholder="ghp_..."
-            spellCheck={false}
-            onChange={(e) => setGitHubTokenPool(parseGitHubTokenPool(e.target.value))}
-          />
-        </SettingRow>
-        <SettingRow label="Active Token" description="Token used for the next GitHub request">
-          <select
-            className="settings-select"
-            value={String(activeTokenIndex)}
-            disabled={tokenPool.length === 0}
-            onChange={(e) => updateGitHub({ activeTokenIndex: Number(e.target.value) })}
-          >
-            {tokenPool.length === 0 ? (
-              <option value="0">No tokens</option>
-            ) : (
-              tokenPool.map((token, index) => (
-                <option key={`${token}-${index}`} value={String(index)}>
-                  {formatGitHubTokenLabel(token, index)}
-                </option>
-              ))
-            )}
-          </select>
-        </SettingRow>
-        <SettingRow label="Rotate on Rate Limit" description="Automatically advance when a GitHub token is exhausted">
-          <ToggleSwitch
-            value={settings.rotateOnRateLimit}
-            onChange={(rotateOnRateLimit) => updateGitHub({ rotateOnRateLimit })}
-          />
-        </SettingRow>
-        <div className="github-token-actions">
-          <button className="settings-inline-button" disabled={tokenPool.length <= 1} onClick={() => selectNextToken()}>
-            Next Token
-          </button>
-          <span className="github-token-count">
-            {tokenPool.length} token{tokenPool.length === 1 ? '' : 's'} configured
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function formatGitHubTokenLabel(token: string, index: number): string {
-  return `Token ${index + 1} (${maskGitHubToken(token)})`;
-}
-
-function maskGitHubToken(token: string): string {
-  if (token.length <= 10) return 'saved';
-  return `${token.slice(0, 4)}...${token.slice(-4)}`;
 }
 
 function TerminalSettings() {
