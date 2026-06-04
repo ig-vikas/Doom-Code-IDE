@@ -2,6 +2,12 @@ import { create } from 'zustand';
 import type { AppSettings } from '../types';
 import { defaultSettings } from '../config/defaultSettings';
 import {
+  getActiveGitHubToken,
+  normalizeGitHubTokenIndex,
+  parseGitHubTokenPool,
+  selectNextGitHubToken,
+} from '../services/githubTokenPool';
+import {
   DEFAULT_EDITOR_FONT_FAMILY,
   isAllowedAppThemeId,
   isAllowedEditorFontFamily,
@@ -25,12 +31,26 @@ function clampUISettings(ui: AppSettings['ui']): AppSettings['ui'] {
   };
 }
 
+function clampGitHubSettings(github: AppSettings['github']): AppSettings['github'] {
+  const tokenPool = parseGitHubTokenPool(github.tokenPool);
+
+  return {
+    ...github,
+    tokenPool,
+    activeTokenIndex: normalizeGitHubTokenIndex(github.activeTokenIndex, tokenPool.length),
+  };
+}
+
 interface SettingsState {
   settings: AppSettings;
   setSettings: (settings: Partial<AppSettings>) => void;
   updateEditor: (editor: Partial<AppSettings['editor']>) => void;
   updateUI: (ui: Partial<AppSettings['ui']>) => void;
   updateBuild: (build: Partial<AppSettings['build']>) => void;
+  updateGitHub: (github: Partial<AppSettings['github']>) => void;
+  setGitHubTokenPool: (tokens: string[]) => void;
+  getActiveGitHubToken: () => string | null;
+  selectNextGitHubToken: () => string | null;
   updateTemplate: (template: Partial<AppSettings['template']>) => void;
   updateTerminal: (terminal: Partial<AppSettings['terminal']>) => void;
   updateFiles: (files: Partial<AppSettings['files']>) => void;
@@ -39,11 +59,12 @@ interface SettingsState {
   loadSettings: (settings: AppSettings) => void;
 }
 
-export const useSettingsStore = create<SettingsState>((set) => ({
+export const useSettingsStore = create<SettingsState>((set, get) => ({
   settings: {
     ...defaultSettings,
     editor: clampEditorSettings(defaultSettings.editor),
     ui: clampUISettings(defaultSettings.ui),
+    github: clampGitHubSettings(defaultSettings.github),
   },
 
   setSettings: (partial) =>
@@ -54,6 +75,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
           ...merged,
           editor: clampEditorSettings(merged.editor),
           ui: clampUISettings(merged.ui),
+          github: clampGitHubSettings(merged.github),
         },
       };
     }),
@@ -78,6 +100,38 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     set((state) => ({
       settings: { ...state.settings, build: { ...state.settings.build, ...build } },
     })),
+
+  updateGitHub: (github) =>
+    set((state) => ({
+      settings: {
+        ...state.settings,
+        github: clampGitHubSettings({ ...state.settings.github, ...github }),
+      },
+    })),
+
+  setGitHubTokenPool: (tokens) =>
+    set((state) => ({
+      settings: {
+        ...state.settings,
+        github: clampGitHubSettings({ ...state.settings.github, tokenPool: tokens }),
+      },
+    })),
+
+  getActiveGitHubToken: () => getActiveGitHubToken(get().settings.github),
+
+  selectNextGitHubToken: () => {
+    const next = selectNextGitHubToken(get().settings.github);
+    set((state) => ({
+      settings: {
+        ...state.settings,
+        github: {
+          ...state.settings.github,
+          activeTokenIndex: next.activeTokenIndex,
+        },
+      },
+    }));
+    return next.token;
+  },
 
   updateTemplate: (template) =>
     set((state) => ({
@@ -105,6 +159,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         ...defaultSettings,
         editor: clampEditorSettings(defaultSettings.editor),
         ui: clampUISettings(defaultSettings.ui),
+        github: clampGitHubSettings(defaultSettings.github),
       },
     }),
 
@@ -115,6 +170,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       editor: { ...defaultSettings.editor, ...loaded.editor },
       ui: { ...defaultSettings.ui, ...loaded.ui },
       build: { ...defaultSettings.build, ...loaded.build },
+      github: { ...defaultSettings.github, ...loaded.github },
       template: { ...defaultSettings.template, ...loaded.template },
       terminal: { ...defaultSettings.terminal, ...loaded.terminal },
       files: { ...defaultSettings.files, ...loaded.files },
@@ -126,6 +182,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         ...merged,
         editor: clampEditorSettings(merged.editor),
         ui: clampUISettings(merged.ui),
+        github: clampGitHubSettings(merged.github),
       },
     });
   },

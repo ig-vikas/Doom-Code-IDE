@@ -2,6 +2,7 @@ export interface AppSettings {
   editor: EditorSettings;
   ui: UISettings;
   build: BuildSettings;
+  github: GitHubSettings;
   template: TemplateSettings;
   terminal: TerminalSettings;
   files: FileSettings;
@@ -64,6 +65,12 @@ export interface BuildSettings {
   saveBeforeBuild: boolean;
   clearOutputBeforeBuild: boolean;
   showExecutionTime: boolean;
+}
+
+export interface GitHubSettings {
+  tokenPool: string[];
+  activeTokenIndex: number;
+  rotateOnRateLimit: boolean;
 }
 
 export interface TemplateSettings {

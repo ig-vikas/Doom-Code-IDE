@@ -33,6 +33,10 @@
   <img src="https://img.shields.io/badge/Rust-2021-orange?style=flat-square&logo=rust&logoColor=white" alt="Rust">
 </p>
 
+<p align="center">
+  <a href="https://github.com/ig-vikas/Doom-Code-IDE/stargazers"><strong>Star Doom Code on GitHub</strong></a>
+</p>
+
 ---
 
 ## 🪟 Download for Windows
@@ -247,6 +251,11 @@ Preferences are structured within `defaultSettings.ts`. Below is a breakdown of 
     "compilerPath": "g++",
     "defaultProfile": "Doom",
     "saveBeforeBuild": true
+  },
+  "github": {
+    "tokenPool": [],
+    "activeTokenIndex": 0,
+    "rotateOnRateLimit": true
   },
   "terminal": {
     "fontFamily": "JetBrains Mono, monospace",

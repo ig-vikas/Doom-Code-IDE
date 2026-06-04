@@ -1,5 +1,5 @@
 export type { FileNode, FileInfo } from './file';
-export type { AppSettings, EditorSettings, UISettings, BuildSettings, TemplateSettings, TerminalSettings, FileSettings, AnimationSettings } from './settings';
+export type { AppSettings, EditorSettings, UISettings, BuildSettings, GitHubSettings, TemplateSettings, TerminalSettings, FileSettings, AnimationSettings } from './settings';
 export type { Keybinding } from './keybinding';
 export type { ThemeColors, ThemeDefinition, MonacoThemeData, MonacoTokenRule } from './theme';
 export type { EditorColorScheme } from './editorScheme';
